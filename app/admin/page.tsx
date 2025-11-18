@@ -136,6 +136,9 @@ export default function AdminPage() {
       if (response.ok) {
         const data = await response.json()
         setQuizState(data.state)
+        if (data.state?.totalQuestions) {
+          setTotalQuestions(data.state.totalQuestions)
+        }
       }
     } catch (error) {
       console.error("Error loading quiz state:", error)
@@ -192,6 +195,12 @@ export default function AdminPage() {
   }
 
   const handleNextQuestion = async () => {
+    // Check if we've reached the limit
+    if (quizState && quizState.currentQuestionIndex + 1 >= quizState.totalQuestions) {
+      alert("You've reached the maximum number of questions. Please end the quiz.")
+      return
+    }
+    
     // Get random question
     const randomQuestion = getRandomQuestion()
     setCurrentQuestionDisplay(randomQuestion.question)

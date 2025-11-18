@@ -127,12 +127,27 @@ export async function POST(request: NextRequest) {
         break
       
       case "next_question":
-        updateData = {
-          currentQuestionIndex: state.currentQuestionIndex + 1,
-          currentQuestionId: questionId || null,
-          questionStartTime: questionId ? new Date() : null,
-          countdownActive: false,
-          countdownValue: 0,
+        const nextIndex = state.currentQuestionIndex + 1
+        // Don't go beyond total questions
+        if (nextIndex < state.totalQuestions) {
+          updateData = {
+            currentQuestionIndex: nextIndex,
+            currentQuestionId: questionId || null,
+            questionStartTime: questionId ? new Date() : null,
+            countdownActive: false,
+            countdownValue: 0,
+            isActive: questionId ? true : false,
+          }
+        } else {
+          // Quiz completed
+          updateData = {
+            isActive: false,
+            currentQuestionId: null,
+            questionStartTime: null,
+            endedAt: new Date(),
+            countdownActive: false,
+            countdownValue: 0,
+          }
         }
         break
       
