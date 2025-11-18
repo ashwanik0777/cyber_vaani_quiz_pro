@@ -30,8 +30,12 @@ export default function QuizPage() {
   const [answerResult, setAnswerResult] = useState<{ isCorrect: boolean; pointsEarned: number } | null>(null)
   const [showLeaderboard, setShowLeaderboard] = useState(false)
   const [timeUp, setTimeUp] = useState(false)
+  const [showAnswer, setShowAnswer] = useState(false)
+  const [quizCompleted, setQuizCompleted] = useState(false)
   const eventSourceRef = useRef<EventSource | null>(null)
   const timerRef = useRef<NodeJS.Timeout | null>(null)
+  const answerRevealTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const leaderboardTimerRef = useRef<NodeJS.Timeout | null>(null)
 
   // Initialize user and questions
   useEffect(() => {
@@ -86,13 +90,19 @@ export default function QuizPage() {
             setShowCountdown(false)
           }
           
-          // Show leaderboard when question ends
-          if (!state.isActive && state.currentQuestionId && !state.countdownActive) {
+          // Check if quiz is completed
+          if (state.endedAt && !state.isActive) {
+            setQuizCompleted(true)
             setShowLeaderboard(true)
-            setTimeUp(true)
+          } else if (!state.isActive && state.currentQuestionId && !state.countdownActive && state.currentQuestionIndex >= (state.totalQuestions - 1)) {
+            // Last question ended
+            setQuizCompleted(true)
+            setShowLeaderboard(true)
           } else if (state.isActive) {
             setShowLeaderboard(false)
             setTimeUp(false)
+            setShowAnswer(false)
+            setQuizCompleted(false)
           }
 
           // Handle question changes - each user gets their own question
@@ -102,12 +112,18 @@ export default function QuizPage() {
             if (questionIndex < userQuestions.length) {
               const question = userQuestions[questionIndex]
               if (question && question.id !== currentQuestion?.id) {
-                setCurrentQuestion(question)
-                setIsAnswered(false)
-                setSelectedAnswerIndex(null)
-                setAnswerResult(null)
-                setTimeLeft(15)
-                setQuestionStartTime(new Date(state.questionStartTime))
+              setCurrentQuestion(question)
+              setIsAnswered(false)
+              setSelectedAnswerIndex(null)
+              setAnswerResult(null)
+              setShowAnswer(false)
+              setShowLeaderboard(false)
+              setTimeUp(false)
+              setTimeLeft(15)
+              setQuestionStartTime(new Date(state.questionStartTime))
+              // Clear timers
+              if (answerRevealTimerRef.current) clearTimeout(answerRevealTimerRef.current)
+              if (leaderboardTimerRef.current) clearTimeout(leaderboardTimerRef.current)
               }
             }
           }
@@ -146,10 +162,16 @@ export default function QuizPage() {
         setTimeLeft(remaining)
       }, 100)
     } else {
-      // Time's up
+      // Time's up - show answer first, then leaderboard after 2 seconds
       setIsAnswered(true)
       setTimeUp(true)
-      setShowLeaderboard(true)
+      setShowAnswer(true)
+      
+      // Show leaderboard after 2 seconds
+      if (leaderboardTimerRef.current) clearTimeout(leaderboardTimerRef.current)
+      leaderboardTimerRef.current = setTimeout(() => {
+        setShowLeaderboard(true)
+      }, 2000)
     }
 
     return () => {
@@ -166,6 +188,7 @@ export default function QuizPage() {
 
     setIsAnswered(true)
     setSelectedAnswerIndex(answerIndex)
+    // Don't show answer yet - wait for time to end
 
     try {
       const response = await fetch("/api/quiz/live", {
@@ -186,13 +209,13 @@ export default function QuizPage() {
       const result = await response.json()
       
       if (result.success) {
-        // Store the result
+        // Store the result but don't show yet
         setAnswerResult({
           isCorrect: result.isCorrect,
           pointsEarned: result.pointsEarned || 0,
         })
         
-        // Update local points
+        // Update local points silently
         if (result.isCorrect) {
           setUserPoints((prev) => prev + (result.pointsEarned || 0))
         }
@@ -201,6 +224,24 @@ export default function QuizPage() {
       console.error("Error submitting answer:", error)
     }
   }
+
+  // Show answer when time ends
+  useEffect(() => {
+    if (timeUp && isAnswered && answerResult) {
+      // Show answer immediately when time ends
+      setShowAnswer(true)
+      
+      // Show leaderboard after 2 seconds
+      if (leaderboardTimerRef.current) clearTimeout(leaderboardTimerRef.current)
+      leaderboardTimerRef.current = setTimeout(() => {
+        setShowLeaderboard(true)
+      }, 2000)
+    }
+
+    return () => {
+      if (leaderboardTimerRef.current) clearTimeout(leaderboardTimerRef.current)
+    }
+  }, [timeUp, isAnswered, answerResult])
 
   if (isLoading) {
     return (
@@ -249,16 +290,16 @@ export default function QuizPage() {
       )}
 
       {/* Header */}
-      <header className="bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 text-white shadow-xl sticky top-0 z-10">
+      <header className="bg-slate-700 text-white shadow-lg sticky top-0 z-10">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-white/20 rounded-lg backdrop-blur-sm">
+              <div className="p-2 bg-slate-600 rounded-lg">
                 <Shield className="h-6 w-6 text-white" />
               </div>
               <div>
                 <h1 className="font-bold text-xl text-white">CyberVaani Quiz</h1>
-                <p className="text-sm text-white/90">
+                <p className="text-sm text-slate-200">
                   Question {quizState?.currentQuestionIndex !== undefined ? quizState.currentQuestionIndex + 1 : 0} of {quizState?.totalQuestions || 10}
                 </p>
               </div>
@@ -266,17 +307,17 @@ export default function QuizPage() {
             <div className="text-right">
               <div className="flex items-center gap-4">
                 {userRank && (
-                  <div className="flex items-center gap-2 bg-yellow-500/20 px-3 py-1.5 rounded-full backdrop-blur-sm">
-                    <Trophy className="h-5 w-5 text-yellow-300" />
+                  <div className="flex items-center gap-2 bg-slate-600 px-3 py-1.5 rounded-lg">
+                    <Trophy className="h-5 w-5 text-yellow-400" />
                     <span className="font-bold text-white">Rank #{userRank}</span>
                   </div>
                 )}
-                <div className="flex items-center gap-2 bg-green-500/20 px-3 py-1.5 rounded-full backdrop-blur-sm">
-                  <TrendingUp className="h-5 w-5 text-green-300" />
+                <div className="flex items-center gap-2 bg-slate-600 px-3 py-1.5 rounded-lg">
+                  <TrendingUp className="h-5 w-5 text-green-400" />
                   <span className="font-bold text-white">{userPoints} pts</span>
                 </div>
               </div>
-              <p className="text-sm text-white/80 mt-1">{currentUser?.name}</p>
+              <p className="text-sm text-slate-200 mt-1">{currentUser?.name}</p>
             </div>
           </div>
         </div>

@@ -401,6 +401,29 @@ export default function AdminPage() {
                 <CardDescription>Control the quiz flow and questions</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
+                {/* Question Count Selector */}
+                {!quizState?.isActive && !quizState?.countdownActive && (
+                  <div className="space-y-2">
+                    <Label htmlFor="questionCount">Number of Questions</Label>
+                    <Input
+                      id="questionCount"
+                      type="number"
+                      min="1"
+                      max="50"
+                      value={totalQuestions}
+                      onChange={(e) => {
+                        const value = parseInt(e.target.value) || 10
+                        setTotalQuestions(Math.min(Math.max(1, value), 50))
+                      }}
+                      className="h-11"
+                      disabled={quizState?.isActive || quizState?.countdownActive}
+                    />
+                    <p className="text-xs text-gray-500">
+                      Set the number of questions for this quiz (1-50)
+                    </p>
+                  </div>
+                )}
+
                 {/* Current Question Info */}
                 {currentQuestionDisplay && (
                   <div className="p-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg border-2 border-blue-200 shadow-sm">
@@ -413,7 +436,7 @@ export default function AdminPage() {
                   </div>
                 )}
                 
-                {!currentQuestionDisplay && (
+                {!currentQuestionDisplay && !quizState?.isActive && (
                   <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
                     <p className="text-sm text-gray-600 text-center">
                       Questions will be randomly selected when quiz starts
@@ -436,6 +459,9 @@ export default function AdminPage() {
                         <span className="ml-2 font-medium">
                           {quizState.currentQuestionIndex + 1} / {quizState.totalQuestions}
                         </span>
+                        {quizState.currentQuestionIndex + 1 >= quizState.totalQuestions && (
+                          <Badge className="ml-2 bg-green-100 text-green-700">Last Question</Badge>
+                        )}
                       </div>
                       <div>
                         <span className="text-gray-600">Participants:</span>
