@@ -10,6 +10,17 @@ import { Trophy, Star, Award, ExternalLink, Home, Users, CheckCircle, XCircle } 
 import { getScoreColor, getScoreMessage } from "@/lib/quiz-utils"
 import type { QuizQuestion } from "@/lib/quiz-data"
 
+interface LeaderboardEntry {
+  userId: string
+  name: string
+  rollNo: string
+  totalPoints: number
+  score: number
+  totalQuestions: number
+  percentage: number
+  rank: number
+}
+
 interface QuizResults {
   user: {
     name: string
@@ -18,14 +29,17 @@ interface QuizResults {
     email: string
     userId?: string
   }
-  questions: QuizQuestion[]
-  answers: number[]
-  score: number
+  questions?: QuizQuestion[]
+  answers?: number[]
+  score?: number
   totalQuestions: number
-  percentage: number
+  percentage?: number
   completedAt: string
   resultId?: string
   error?: string
+  leaderboard?: LeaderboardEntry[]
+  userRank?: number
+  userPoints?: number
 }
 
 export default function ResultsPage() {
@@ -34,6 +48,7 @@ export default function ResultsPage() {
   const [score, setScore] = useState(0)
   const [isLoading, setIsLoading] = useState(true)
   const [showAnswers, setShowAnswers] = useState(false)
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([])
 
   // WhatsApp group link (replace with your actual group link)
   const WHATSAPP_GROUP_LINK = "https://chat.whatsapp.com/DdmuafKHRoTAYSaLTeBzqP"
@@ -47,13 +62,15 @@ export default function ResultsPage() {
 
     const parsedResults: QuizResults = JSON.parse(quizData)
     setResults(parsedResults)
-
-    setScore(parsedResults.percentage || 0)
+    setLeaderboard(parsedResults.leaderboard || [])
+    setScore(parsedResults.percentage || parsedResults.userPoints || 0)
     setIsLoading(false)
 
-    // Clear session storage
-    sessionStorage.removeItem("quizResults")
-    sessionStorage.removeItem("currentUser")
+    // Clear session storage after a delay
+    setTimeout(() => {
+      sessionStorage.removeItem("quizResults")
+      sessionStorage.removeItem("currentUser")
+    }, 1000)
   }, [router])
 
   const getScoreIcon = (score: number) => {
@@ -97,8 +114,13 @@ export default function ResultsPage() {
     )
   }
 
-  const correctAnswers = results.answers.filter((answer, index) => answer === results.questions[index].correctAnswer)
+  const correctAnswers = results.answers 
+    ? results.answers.filter((answer, index) => answer === results.questions?.[index]?.correctAnswer)
+    : []
   const scoreBadge = getScoreBadge(score)
+  const userRank = results.userRank || leaderboard.findIndex(
+    (entry) => entry.userId === results.user.userId || entry.rollNo === results.user.rollNo
+  ) + 1 || null
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-blue-100">
@@ -112,7 +134,7 @@ export default function ResultsPage() {
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-6 max-w-2xl">
+      <main className="container mx-auto px-4 py-6 max-w-4xl">
         {/* Database Error Alert */}
         {results.error && (
           <Card className="shadow-lg border-0 bg-yellow-50 border-yellow-200 mb-6">
@@ -128,142 +150,234 @@ export default function ResultsPage() {
           </Card>
         )}
 
-        {/* Results Card */}
-        <Card className="shadow-lg border-0 bg-white/90 backdrop-blur-sm mb-6">
-          <CardHeader className="text-center pb-4">
-            <div className="flex justify-center mb-4">{getScoreIcon(score)}</div>
-            <CardTitle className="text-2xl text-gray-900">Congratulations, {results.user.name}!</CardTitle>
-            <p className="text-gray-600">You have completed the CyberVaani Quiz</p>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {/* Score Display */}
-            <div className="text-center">
-              <div className="mb-4">
-                <div className={`text-6xl font-bold ${getScoreColor(score)} mb-2`}>{score}%</div>
-                <Badge className={scoreBadge.color}>{scoreBadge.text}</Badge>
-              </div>
-              <Progress value={score} className="h-3 mb-4" />
-              <p className="text-gray-700 text-pretty leading-relaxed">{getScoreMessage(score)}</p>
-            </div>
-
-            {/* Stats */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="text-center p-4 bg-green-50 rounded-lg border border-green-100">
-                <div className="text-2xl font-bold text-green-600">{results.score}</div>
-                <div className="text-sm text-green-700">Correct Answers</div>
-              </div>
-              <div className="text-center p-4 bg-red-50 rounded-lg border border-red-100">
-                <div className="text-2xl font-bold text-red-600">{results.totalQuestions - results.score}</div>
-                <div className="text-sm text-red-700">Incorrect Answers</div>
-              </div>
-            </div>
-
-            {/* User Details */}
-            <div className="bg-blue-50 rounded-lg p-4 border border-blue-100">
-              <h3 className="font-semibold text-blue-900 mb-2">Quiz Details:</h3>
-              <div className="text-sm text-blue-800 space-y-1">
-                <p>
-                  <strong>Name:</strong> {results.user.name}
-                </p>
-                <p>
-                  <strong>Roll No:</strong> {results.user.rollNo}
-                </p>
-                <p>
-                  <strong>Completed:</strong> {new Date(results.completedAt).toLocaleString()}
-                </p>
-                <p>
-                  <strong>Questions:</strong> {results.questions.length} random questions
-                </p>
-              </div>
-            </div>
-
-            {/* Reward Eligibility */}
-            {score >= 80 && (
-              <div className="bg-yellow-50 rounded-lg p-4 border border-yellow-200">
-                <div className="flex items-center gap-2 mb-2">
-                  <Trophy className="h-5 w-5 text-yellow-600" />
-                  <h3 className="font-semibold text-yellow-900">Reward Eligible!</h3>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Left Column - User Results */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* Results Card */}
+            <Card className="shadow-lg border-0 bg-white/90 backdrop-blur-sm">
+              <CardHeader className="text-center pb-4">
+                <div className="flex justify-center mb-4">{getScoreIcon(score)}</div>
+                <CardTitle className="text-2xl text-gray-900">Congratulations, {results.user.name}!</CardTitle>
+                <p className="text-gray-600">You have completed the CyberVaani Quiz</p>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Score Display */}
+                <div className="text-center">
+                  <div className="mb-4">
+                    <div className={`text-6xl font-bold ${getScoreColor(score)} mb-2`}>{score}%</div>
+                    <Badge className={scoreBadge.color}>{scoreBadge.text}</Badge>
+                  </div>
+                  <Progress value={score} className="h-3 mb-4" />
+                  <p className="text-gray-700 text-pretty leading-relaxed">{getScoreMessage(score)}</p>
                 </div>
-                <p className="text-sm text-yellow-800">
-                  Congratulations! You scored 80% or above and are eligible for rewards. Contact the admin for your
-                  reward.
-                </p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
 
-        {/* Answer Review */}
-        <Card className="shadow-lg border-0 bg-white/90 backdrop-blur-sm mb-6">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-lg">Answer Review</CardTitle>
-              <Button
-                variant="outline"
-                onClick={() => setShowAnswers(!showAnswers)}
-                className="border-blue-200 text-blue-700 hover:bg-blue-50"
-              >
-                {showAnswers ? "Hide Answers" : "Show Answers"}
-              </Button>
-            </div>
-          </CardHeader>
-          {showAnswers && (
-            <CardContent>
-              <div className="space-y-4">
-                {results.questions.map((question, index) => {
-                  const userAnswer = results.answers[index]
-                  const correctAnswer = question.correctAnswer
-                  const isCorrect = userAnswer === correctAnswer
+                {/* Stats */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="text-center p-4 bg-green-50 rounded-lg border border-green-100">
+                    <div className="text-2xl font-bold text-green-600">{results.score || 0}</div>
+                    <div className="text-sm text-green-700">Correct Answers</div>
+                  </div>
+                  <div className="text-center p-4 bg-red-50 rounded-lg border border-red-100">
+                    <div className="text-2xl font-bold text-red-600">{results.totalQuestions - (results.score || 0)}</div>
+                    <div className="text-sm text-red-700">Incorrect Answers</div>
+                  </div>
+                </div>
 
-                  return (
-                    <div key={question.id} className="border rounded-lg p-4">
-                      <div className="flex items-start gap-3 mb-3">
-                        <div className="flex-shrink-0 mt-1">
-                          {isCorrect ? (
-                            <CheckCircle className="h-5 w-5 text-green-600" />
-                          ) : (
-                            <XCircle className="h-5 w-5 text-red-600" />
-                          )}
-                        </div>
-                        <div className="flex-1">
-                          <p className="font-medium text-gray-900 mb-2 text-pretty">
-                            {index + 1}. {question.question}
-                          </p>
-                          <div className="space-y-2">
-                            {question.options.map((option, optionIndex) => (
-                              <div
-                                key={optionIndex}
-                                className={`p-2 rounded text-sm ${
-                                  optionIndex === correctAnswer
-                                    ? "bg-green-100 text-green-800 border border-green-200"
-                                    : optionIndex === userAnswer && !isCorrect
-                                      ? "bg-red-100 text-red-800 border border-red-200"
-                                      : "bg-gray-50 text-gray-700"
-                                }`}
-                              >
-                                <span className="font-medium">{String.fromCharCode(65 + optionIndex)}. </span>
-                                {option}
-                                {optionIndex === correctAnswer && (
-                                  <span className="ml-2 text-green-600 font-medium">(Correct)</span>
-                                )}
-                                {optionIndex === userAnswer && !isCorrect && (
-                                  <span className="ml-2 text-red-600 font-medium">(Your Answer)</span>
+                {/* User Details */}
+                <div className="bg-blue-50 rounded-lg p-4 border border-blue-100">
+                  <h3 className="font-semibold text-blue-900 mb-2">Quiz Details:</h3>
+                  <div className="text-sm text-blue-800 space-y-1">
+                    <p>
+                      <strong>Name:</strong> {results.user.name}
+                    </p>
+                    <p>
+                      <strong>Roll No:</strong> {results.user.rollNo}
+                    </p>
+                    <p>
+                      <strong>Completed:</strong> {new Date(results.completedAt).toLocaleString()}
+                    </p>
+                    <p>
+                      <strong>Total Questions:</strong> {results.totalQuestions}
+                    </p>
+                    {userRank && (
+                      <p>
+                        <strong>Your Rank:</strong> #{userRank}
+                      </p>
+                    )}
+                    {results.userPoints && (
+                      <p>
+                        <strong>Total Points:</strong> {results.userPoints}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Reward Eligibility */}
+                {score >= 80 && (
+                  <div className="bg-yellow-50 rounded-lg p-4 border border-yellow-200">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Trophy className="h-5 w-5 text-yellow-600" />
+                      <h3 className="font-semibold text-yellow-900">Reward Eligible!</h3>
+                    </div>
+                    <p className="text-sm text-yellow-800">
+                      Congratulations! You scored 80% or above and are eligible for rewards. Contact the admin for your
+                      reward.
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Answer Review - Only if answers available */}
+            {results.questions && results.answers && (
+              <Card className="shadow-lg border-0 bg-white/90 backdrop-blur-sm">
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-lg">Answer Review</CardTitle>
+                    <Button
+                      variant="outline"
+                      onClick={() => setShowAnswers(!showAnswers)}
+                      className="border-blue-200 text-blue-700 hover:bg-blue-50"
+                    >
+                      {showAnswers ? "Hide Answers" : "Show Answers"}
+                    </Button>
+                  </div>
+                </CardHeader>
+                {showAnswers && (
+                  <CardContent>
+                    <div className="space-y-4">
+                      {results.questions.map((question, index) => {
+                        const userAnswer = results.answers?.[index]
+                        const correctAnswer = question.correctAnswer
+                        const isCorrect = userAnswer === correctAnswer
+
+                        return (
+                          <div key={question.id} className="border rounded-lg p-4">
+                            <div className="flex items-start gap-3 mb-3">
+                              <div className="flex-shrink-0 mt-1">
+                                {isCorrect ? (
+                                  <CheckCircle className="h-5 w-5 text-green-600" />
+                                ) : (
+                                  <XCircle className="h-5 w-5 text-red-600" />
                                 )}
                               </div>
-                            ))}
+                              <div className="flex-1">
+                                <p className="font-medium text-gray-900 mb-2 text-pretty">
+                                  {index + 1}. {question.question}
+                                </p>
+                                <div className="space-y-2">
+                                  {question.options.map((option, optionIndex) => (
+                                    <div
+                                      key={optionIndex}
+                                      className={`p-2 rounded text-sm ${
+                                        optionIndex === correctAnswer
+                                          ? "bg-green-100 text-green-800 border border-green-200"
+                                          : optionIndex === userAnswer && !isCorrect
+                                            ? "bg-red-100 text-red-800 border border-red-200"
+                                            : "bg-gray-50 text-gray-700"
+                                      }`}
+                                    >
+                                      <span className="font-medium">{String.fromCharCode(65 + optionIndex)}. </span>
+                                      {option}
+                                      {optionIndex === correctAnswer && (
+                                        <span className="ml-2 text-green-600 font-medium">(Correct)</span>
+                                      )}
+                                      {optionIndex === userAnswer && !isCorrect && (
+                                        <span className="ml-2 text-red-600 font-medium">(Your Answer)</span>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </CardContent>
+                )}
+              </Card>
+            )}
+          </div>
+
+          {/* Right Column - Leaderboard */}
+          <div className="lg:col-span-1">
+            <Card className="shadow-lg border-0 bg-white/90 backdrop-blur-sm sticky top-20">
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Trophy className="h-5 w-5 text-yellow-500" />
+                  Top 20 Winners
+                </CardTitle>
+                <CardDescription>Final Leaderboard</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {leaderboard.length === 0 ? (
+                  <p className="text-sm text-gray-500 text-center py-8">No rankings available</p>
+                ) : (
+                  <div className="space-y-2 max-h-[600px] overflow-y-auto">
+                    {leaderboard.slice(0, 20).map((entry, index) => {
+                      const isCurrentUser =
+                        entry.userId === results.user.userId ||
+                        entry.rollNo === results.user.rollNo
+
+                      return (
+                        <div
+                          key={entry.userId}
+                          className={`p-3 rounded-lg border-2 transition-all ${
+                            index === 0
+                              ? "bg-yellow-50 border-yellow-300"
+                              : index === 1
+                                ? "bg-gray-50 border-gray-300"
+                                : index === 2
+                                  ? "bg-orange-50 border-orange-300"
+                                  : isCurrentUser
+                                    ? "bg-blue-50 border-blue-300"
+                                    : "bg-gray-50 border-gray-200"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={`font-bold text-sm ${
+                                  index === 0
+                                    ? "text-yellow-600"
+                                    : index === 1
+                                      ? "text-gray-600"
+                                      : index === 2
+                                        ? "text-orange-600"
+                                        : "text-gray-500"
+                                }`}
+                              >
+                                #{entry.rank}
+                              </span>
+                              <span
+                                className={`text-sm font-medium ${
+                                  isCurrentUser ? "text-blue-700" : "text-gray-700"
+                                }`}
+                              >
+                                {entry.name}
+                                {isCurrentUser && <span className="ml-1 text-blue-600">(You)</span>}
+                              </span>
+                            </div>
+                            <span className="text-sm font-bold text-green-600">
+                              {entry.totalPoints} pts
+                            </span>
+                          </div>
+                          <div className="text-xs text-gray-500 mt-1">
+                            {entry.score}/{entry.totalQuestions} ({entry.percentage}%)
                           </div>
                         </div>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </CardContent>
-          )}
-        </Card>
+                      )
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </div>
 
         {/* Action Buttons */}
-        <div className="space-y-4">
+        <div className="mt-6 space-y-4">
           {/* WhatsApp Group Link */}
           <Card className="shadow-lg border-0 bg-white/90 backdrop-blur-sm">
             <CardContent className="p-6 text-center">
@@ -286,23 +400,15 @@ export default function ResultsPage() {
             </CardContent>
           </Card>
 
-          {/* Navigation */}
-          <div className="flex gap-4">
+          {/* Back to Home Button */}
+          <div className="flex justify-center">
             <Button
               onClick={() => router.push("/")}
-              variant="outline"
-              className="flex-1 border-blue-200 text-blue-700 hover:bg-blue-50"
+              className="bg-slate-700 hover:bg-slate-800 text-white px-8 py-6 text-lg"
             >
-              <Home className="h-4 w-4 mr-2" />
+              <Home className="h-5 w-5 mr-2" />
               Back to Home
             </Button>
-            {/* <Button
-              onClick={() => router.push("/admin")}
-              variant="outline"
-              className="flex-1 border-gray-200 text-gray-700 hover:bg-gray-50"
-            >
-              Admin Dashboard
-            </Button> */}
           </div>
         </div>
       </main>

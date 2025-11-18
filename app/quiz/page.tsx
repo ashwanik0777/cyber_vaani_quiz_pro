@@ -30,14 +30,10 @@ export default function QuizPage() {
   const [answerResult, setAnswerResult] = useState<{ isCorrect: boolean; pointsEarned: number } | null>(null)
   const [showLeaderboard, setShowLeaderboard] = useState(false)
   const [timeUp, setTimeUp] = useState(false)
-  const [showAnswer, setShowAnswer] = useState(false)
-  const [quizCompleted, setQuizCompleted] = useState(false)
   const eventSourceRef = useRef<EventSource | null>(null)
   const timerRef = useRef<NodeJS.Timeout | null>(null)
-  const answerRevealTimerRef = useRef<NodeJS.Timeout | null>(null)
-  const leaderboardTimerRef = useRef<NodeJS.Timeout | null>(null)
 
-  // Initialize user
+  // Initialize user and questions
   useEffect(() => {
     const userData = sessionStorage.getItem("currentUser")
     if (!userData) {
@@ -47,21 +43,16 @@ export default function QuizPage() {
 
     const user = JSON.parse(userData)
     setCurrentUser(user)
-    setIsLoading(false)
-  }, [router])
 
-  // Generate user-specific questions when quiz state is available
-  useEffect(() => {
-    if (!currentUser || !quizState?.totalQuestions) return
-
-    // Get user-specific questions based on totalQuestions from quiz state
-    const questionIds = getUserSpecificQuestions(currentUser.userId || currentUser.email, quizState.totalQuestions)
+    // Get user-specific questions
+    const questionIds = getUserSpecificQuestions(user.userId || user.email, 10)
     const questions = questionIds
       .map((id) => quizQuestions.find((q) => q.id === id))
       .filter((q): q is QuizQuestion => q !== undefined)
     
     setUserQuestions(questions)
-  }, [currentUser, quizState?.totalQuestions])
+    setIsLoading(false)
+  }, [router])
 
   // Connect to real-time stream
   useEffect(() => {
@@ -95,19 +86,32 @@ export default function QuizPage() {
             setShowCountdown(false)
           }
           
-          // Check if quiz is completed
-          if (state.endedAt && !state.isActive) {
-            setQuizCompleted(true)
+          // Show leaderboard when question ends or quiz completes
+          if (state.endedAt) {
+            // Quiz completed - redirect to results
             setShowLeaderboard(true)
-          } else if (!state.isActive && state.currentQuestionId && !state.countdownActive && state.currentQuestionIndex >= (state.totalQuestions - 1)) {
-            // Last question ended
-            setQuizCompleted(true)
+            setTimeUp(true)
+            // Store results and redirect
+            setTimeout(() => {
+              const resultsData = {
+                user: currentUser,
+                leaderboard: state.leaderboard || [],
+                userRank,
+                userPoints,
+                totalQuestions: state.totalQuestions || 10,
+                completedAt: new Date().toISOString(),
+              }
+              sessionStorage.setItem("quizResults", JSON.stringify(resultsData))
+              router.push("/results")
+            }, 3000)
+          } else if (!state.isActive && state.currentQuestionIndex !== undefined && !state.countdownActive && state.currentQuestionIndex >= 0) {
+            // Question ended - show leaderboard (keep showing until next question)
             setShowLeaderboard(true)
-          } else if (state.isActive) {
+            setTimeUp(true)
+          } else if (state.isActive && state.questionStartTime) {
+            // New question started - hide leaderboard
             setShowLeaderboard(false)
             setTimeUp(false)
-            setShowAnswer(false)
-            setQuizCompleted(false)
           }
 
           // Handle question changes - each user gets their own question
@@ -117,18 +121,12 @@ export default function QuizPage() {
             if (questionIndex < userQuestions.length) {
               const question = userQuestions[questionIndex]
               if (question && question.id !== currentQuestion?.id) {
-              setCurrentQuestion(question)
-              setIsAnswered(false)
-              setSelectedAnswerIndex(null)
-              setAnswerResult(null)
-              setShowAnswer(false)
-              setShowLeaderboard(false)
-              setTimeUp(false)
-              setTimeLeft(15)
-              setQuestionStartTime(new Date(state.questionStartTime))
-              // Clear timers
-              if (answerRevealTimerRef.current) clearTimeout(answerRevealTimerRef.current)
-              if (leaderboardTimerRef.current) clearTimeout(leaderboardTimerRef.current)
+                setCurrentQuestion(question)
+                setIsAnswered(false)
+                setSelectedAnswerIndex(null)
+                setAnswerResult(null)
+                setTimeLeft(15)
+                setQuestionStartTime(new Date(state.questionStartTime))
               }
             }
           }
@@ -168,10 +166,9 @@ export default function QuizPage() {
       }, 100)
     } else {
       // Time's up
-      if (!isAnswered) {
-        setIsAnswered(true)
-      }
+      setIsAnswered(true)
       setTimeUp(true)
+      setShowLeaderboard(true)
     }
 
     return () => {
@@ -188,7 +185,6 @@ export default function QuizPage() {
 
     setIsAnswered(true)
     setSelectedAnswerIndex(answerIndex)
-    // Don't show answer yet - wait for time to end
 
     try {
       const response = await fetch("/api/quiz/live", {
@@ -209,13 +205,13 @@ export default function QuizPage() {
       const result = await response.json()
       
       if (result.success) {
-        // Store the result but don't show yet
+        // Store the result
         setAnswerResult({
           isCorrect: result.isCorrect,
           pointsEarned: result.pointsEarned || 0,
         })
         
-        // Update local points silently
+        // Update local points
         if (result.isCorrect) {
           setUserPoints((prev) => prev + (result.pointsEarned || 0))
         }
@@ -224,26 +220,6 @@ export default function QuizPage() {
       console.error("Error submitting answer:", error)
     }
   }
-
-  // Show answer when time ends, then leaderboard after 2 seconds
-  useEffect(() => {
-    if (timeUp) {
-      // Show answer if user has answered
-      if (isAnswered && answerResult) {
-        setShowAnswer(true)
-      }
-      
-      // Show leaderboard after 2 seconds (whether answer was given or not)
-      if (leaderboardTimerRef.current) clearTimeout(leaderboardTimerRef.current)
-      leaderboardTimerRef.current = setTimeout(() => {
-        setShowLeaderboard(true)
-      }, 2000)
-    }
-
-    return () => {
-      if (leaderboardTimerRef.current) clearTimeout(leaderboardTimerRef.current)
-    }
-  }, [timeUp, isAnswered, answerResult])
 
   if (isLoading) {
     return (
@@ -292,7 +268,7 @@ export default function QuizPage() {
       )}
 
       {/* Header */}
-      <header className="bg-slate-700 text-white shadow-lg sticky top-0 z-10">
+      <header className="bg-slate-700 text-white shadow-lg sticky top-0 z-10 border-b border-slate-600">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -301,7 +277,7 @@ export default function QuizPage() {
               </div>
               <div>
                 <h1 className="font-bold text-xl text-white">CyberVaani Quiz</h1>
-                <p className="text-sm text-slate-200">
+                <p className="text-sm text-slate-300">
                   Question {quizState?.currentQuestionIndex !== undefined ? quizState.currentQuestionIndex + 1 : 0} of {quizState?.totalQuestions || 10}
                 </p>
               </div>
@@ -309,17 +285,17 @@ export default function QuizPage() {
             <div className="text-right">
               <div className="flex items-center gap-4">
                 {userRank && (
-                  <div className="flex items-center gap-2 bg-slate-600 px-3 py-1.5 rounded-lg">
+                  <div className="flex items-center gap-2 bg-slate-600 px-3 py-1.5 rounded-full">
                     <Trophy className="h-5 w-5 text-yellow-400" />
                     <span className="font-bold text-white">Rank #{userRank}</span>
                   </div>
                 )}
-                <div className="flex items-center gap-2 bg-slate-600 px-3 py-1.5 rounded-lg">
+                <div className="flex items-center gap-2 bg-slate-600 px-3 py-1.5 rounded-full">
                   <TrendingUp className="h-5 w-5 text-green-400" />
                   <span className="font-bold text-white">{userPoints} pts</span>
                 </div>
               </div>
-              <p className="text-sm text-slate-200 mt-1">{currentUser?.name}</p>
+              <p className="text-sm text-slate-300 mt-1">{currentUser?.name}</p>
             </div>
           </div>
         </div>
@@ -388,7 +364,7 @@ export default function QuizPage() {
                     {currentQuestion.options.map((option, index) => {
                       const isSelected = selectedAnswerIndex === index
                       const isCorrect = index === currentQuestion.correctAnswer
-                      const showResult = showAnswer && answerResult !== null
+                      const showResult = isAnswered && answerResult !== null
 
                       return (
                         <button
@@ -426,39 +402,8 @@ export default function QuizPage() {
               </Card>
             )}
 
-            {/* Answer Submitted Message - Only show when answer is submitted but not revealed */}
-            {isAnswered && !showAnswer && !showLeaderboard && answerResult && (
-              <Card className="shadow-lg border-0 bg-blue-50 border-blue-200">
-                <CardContent className="p-6 text-center">
-                  <div className="animate-pulse">
-                    <Clock className="h-12 w-12 text-blue-600 mx-auto mb-4" />
-                    <p className="text-lg font-semibold text-blue-800">Answer Submitted!</p>
-                    <p className="text-sm text-blue-700 mt-2">
-                      Waiting for time to end to see results...
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Time's Up - No Answer Submitted */}
-            {timeUp && !isAnswered && !showLeaderboard && (
-              <Card className="shadow-lg border-0 bg-orange-50 border-orange-200">
-                <CardContent className="p-6 text-center">
-                  <Clock className="h-12 w-12 text-orange-600 mx-auto mb-4" />
-                  <p className="text-lg font-semibold text-orange-800">Time's Up!</p>
-                  <p className="text-sm text-orange-700 mt-2">
-                    No answer was submitted for this question.
-                  </p>
-                  <p className="text-xs text-gray-600 mt-4 animate-pulse">
-                    Showing leaderboard in 2 seconds...
-                  </p>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Answer Result - Show when time ends (only if user answered) */}
-            {showAnswer && answerResult && !showLeaderboard && isAnswered && (
+            {/* Answer Submitted Message */}
+            {isAnswered && answerResult && !showLeaderboard && (
               <Card className={`shadow-lg border-0 ${
                 answerResult.isCorrect 
                   ? "bg-green-50 border-green-200" 
@@ -484,23 +429,23 @@ export default function QuizPage() {
                       </p>
                     </>
                   )}
-                  <p className="text-xs text-gray-600 mt-4 animate-pulse">
-                    Showing leaderboard in 2 seconds...
+                  <p className="text-xs text-gray-600 mt-4">
+                    Waiting for next question...
                   </p>
                 </CardContent>
               </Card>
             )}
 
-            {/* Full Leaderboard when time ends or quiz completes */}
-            {showLeaderboard && (timeUp || quizCompleted) && (
+            {/* Full Leaderboard when time ends or question ends */}
+            {showLeaderboard && timeUp && (
               <Card className="shadow-2xl border-0 bg-gradient-to-br from-white to-indigo-50/50 backdrop-blur-sm">
-                <CardHeader className={`${quizCompleted ? 'bg-gradient-to-r from-green-600 to-emerald-600' : 'bg-gradient-to-r from-indigo-600 to-purple-600'} text-white rounded-t-lg`}>
+                <CardHeader className="bg-gradient-to-r from-slate-600 to-slate-700 text-white rounded-t-lg">
                   <CardTitle className="text-2xl flex items-center justify-center gap-3">
                     <Trophy className="h-8 w-8 text-yellow-300" />
-                    {quizCompleted ? "Final Leaderboard - Top 20 Winners" : "Leaderboard - Top 10"}
+                    Leaderboard - Top 10
                   </CardTitle>
                   <p className="text-center text-white/90 mt-2">
-                    {quizCompleted ? "Quiz Completed! Here are the final rankings" : "Time's Up! Here are the current rankings"}
+                    {quizState?.endedAt ? "Quiz Completed! Final Rankings" : "Time's Up! Here are the current rankings"}
                   </p>
                 </CardHeader>
                 <CardContent className="p-6">
@@ -508,8 +453,8 @@ export default function QuizPage() {
                     <p className="text-center text-gray-500 py-8">No rankings yet</p>
                   ) : (
                     <div className="space-y-3">
-                      {/* Top 10 or Top 20 based on quiz completion */}
-                      {leaderboard.slice(0, quizCompleted ? 20 : 10).map((entry, index) => {
+                      {/* Top 10 */}
+                      {leaderboard.slice(0, 10).map((entry, index) => {
                         const isCurrentUser =
                           entry.userId === currentUser?.userId ||
                           entry.rollNo === currentUser?.rollNo
@@ -565,8 +510,8 @@ export default function QuizPage() {
                         )
                       })}
 
-                      {/* User's position if not in top 10/20 */}
-                      {userRank && userRank > (quizCompleted ? 20 : 10) && (
+                      {/* User's position if not in top 10 */}
+                      {userRank && userRank > 10 && (
                         <>
                           <div className="border-t-2 border-dashed border-gray-300 my-4"></div>
                           <div className="p-4 rounded-xl border-2 bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-400 shadow-lg">
@@ -592,17 +537,9 @@ export default function QuizPage() {
                       )}
                     </div>
                   )}
-                  {!quizCompleted && (
-                    <div className="mt-6 text-center">
-                      <p className="text-sm text-gray-600">Waiting for next question...</p>
-                    </div>
-                  )}
-                  {quizCompleted && (
-                    <div className="mt-6 text-center p-4 bg-green-50 rounded-lg border border-green-200">
-                      <p className="text-lg font-semibold text-green-800">🎉 Quiz Completed!</p>
-                      <p className="text-sm text-green-700 mt-2">Thank you for participating!</p>
-                    </div>
-                  )}
+                  <div className="mt-6 text-center">
+                    <p className="text-sm text-gray-600">Waiting for next question...</p>
+                  </div>
                 </CardContent>
               </Card>
             )}

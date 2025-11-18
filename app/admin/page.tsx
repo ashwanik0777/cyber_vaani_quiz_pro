@@ -59,7 +59,7 @@ export default function AdminPage() {
   const [quizState, setQuizState] = useState<QuizState | null>(null)
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([])
   const [currentQuestionDisplay, setCurrentQuestionDisplay] = useState<string>("")
-  const [totalQuestions, setTotalQuestions] = useState<number>(10)
+  const [questionCount, setQuestionCount] = useState<number>(10)
   const eventSourceRef = useRef<EventSource | null>(null)
 
   // Check if already authenticated
@@ -136,8 +136,9 @@ export default function AdminPage() {
       if (response.ok) {
         const data = await response.json()
         setQuizState(data.state)
+        // Set question count from state
         if (data.state?.totalQuestions) {
-          setTotalQuestions(data.state.totalQuestions)
+          setQuestionCount(data.state.totalQuestions)
         }
       }
     } catch (error) {
@@ -156,7 +157,7 @@ export default function AdminPage() {
         body: JSON.stringify({
           action,
           questionId,
-          totalQuestions: totalQuestions,
+          totalQuestions: questionCount,
         }),
       })
 
@@ -195,9 +196,10 @@ export default function AdminPage() {
   }
 
   const handleNextQuestion = async () => {
-    // Check if we've reached the limit
-    if (quizState && quizState.currentQuestionIndex + 1 >= quizState.totalQuestions) {
-      alert("You've reached the maximum number of questions. Please end the quiz.")
+    // Check if we've reached the question limit
+    if (quizState && quizState.currentQuestionIndex >= questionCount - 1) {
+      alert(`Quiz completed! You've reached the limit of ${questionCount} questions.`)
+      await updateQuizState("end_quiz")
       return
     }
     
@@ -411,27 +413,25 @@ export default function AdminPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 {/* Question Count Selector */}
-                {!quizState?.isActive && !quizState?.countdownActive && (
-                  <div className="space-y-2">
-                    <Label htmlFor="questionCount">Number of Questions</Label>
-                    <Input
-                      id="questionCount"
-                      type="number"
-                      min="1"
-                      max="50"
-                      value={totalQuestions}
-                      onChange={(e) => {
-                        const value = parseInt(e.target.value) || 10
-                        setTotalQuestions(Math.min(Math.max(1, value), 50))
-                      }}
-                      className="h-11"
-                      disabled={quizState?.isActive || quizState?.countdownActive}
-                    />
-                    <p className="text-xs text-gray-500">
-                      Set the number of questions for this quiz (1-50)
-                    </p>
-                  </div>
-                )}
+                <div className="space-y-2">
+                  <Label htmlFor="questionCount">Number of Questions</Label>
+                  <Input
+                    id="questionCount"
+                    type="number"
+                    min="1"
+                    max="50"
+                    value={questionCount}
+                    onChange={(e) => {
+                      const value = parseInt(e.target.value) || 10
+                      setQuestionCount(Math.max(1, Math.min(50, value)))
+                    }}
+                    disabled={quizState?.isActive || quizState?.countdownActive}
+                    className="h-11"
+                  />
+                  <p className="text-xs text-gray-500">
+                    Set the total number of questions for this quiz (1-50)
+                  </p>
+                </div>
 
                 {/* Current Question Info */}
                 {currentQuestionDisplay && (
@@ -445,7 +445,7 @@ export default function AdminPage() {
                   </div>
                 )}
                 
-                {!currentQuestionDisplay && !quizState?.isActive && (
+                {!currentQuestionDisplay && (
                   <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
                     <p className="text-sm text-gray-600 text-center">
                       Questions will be randomly selected when quiz starts
@@ -468,9 +468,6 @@ export default function AdminPage() {
                         <span className="ml-2 font-medium">
                           {quizState.currentQuestionIndex + 1} / {quizState.totalQuestions}
                         </span>
-                        {quizState.currentQuestionIndex + 1 >= quizState.totalQuestions && (
-                          <Badge className="ml-2 bg-green-100 text-green-700">Last Question</Badge>
-                        )}
                       </div>
                       <div>
                         <span className="text-gray-600">Participants:</span>
