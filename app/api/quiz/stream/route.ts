@@ -2,6 +2,8 @@ import { type NextRequest } from "next/server"
 import { getDatabase } from "@/lib/mongodb"
 import type { QuizState } from "@/lib/models"
 
+export const dynamic = 'force-dynamic'
+
 // Server-Sent Events for real-time updates
 export async function GET(request: NextRequest) {
   const encoder = new TextEncoder()

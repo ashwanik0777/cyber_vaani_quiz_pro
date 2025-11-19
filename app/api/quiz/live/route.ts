@@ -3,6 +3,8 @@ import { getDatabase } from "@/lib/mongodb"
 import type { QuizState, LiveAnswer, LeaderboardEntry } from "@/lib/models"
 import { ObjectId } from "mongodb"
 
+export const dynamic = 'force-dynamic'
+
 // Submit answer in real-time
 export async function POST(request: NextRequest) {
   try {

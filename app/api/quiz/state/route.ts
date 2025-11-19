@@ -3,6 +3,8 @@ import { getDatabase } from "@/lib/mongodb"
 import type { QuizState } from "@/lib/models"
 import { ObjectId } from "mongodb"
 
+export const dynamic = 'force-dynamic'
+
 // Get current quiz state
 export async function GET(request: NextRequest) {
   try {

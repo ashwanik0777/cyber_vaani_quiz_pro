@@ -8,9 +8,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Shield, Brain, Lock, Users } from "lucide-react"
+import { Shield, Brain, Lock, Users, Eye } from "lucide-react"
 import { validateEmail, validateMobile, validateRollNo } from "@/lib/quiz-utils"
 import { useRouter } from "next/navigation"
+import { useEffect } from "react"
 
 export default function HomePage() {
   const router = useRouter()
@@ -22,6 +23,42 @@ export default function HomePage() {
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [isLoading, setIsLoading] = useState(false)
+  const [visitorCount, setVisitorCount] = useState<number | null>(null)
+
+  // Track visitor on page load
+  useEffect(() => {
+    const trackVisitor = async () => {
+      try {
+        const response = await fetch("/api/visitors", {
+          method: "POST",
+        })
+        if (response.ok) {
+          const data = await response.json()
+          setVisitorCount(data.totalVisitors)
+        }
+      } catch (error) {
+        console.error("Error tracking visitor:", error)
+      }
+    }
+
+    // Load visitor count
+    const loadVisitorCount = async () => {
+      try {
+        const response = await fetch("/api/visitors")
+        if (response.ok) {
+          const data = await response.json()
+          setVisitorCount(data.totalVisitors)
+        }
+      } catch (error) {
+        console.error("Error loading visitor count:", error)
+      }
+    }
+
+    // Track visitor first, then load count
+    trackVisitor().then(() => {
+      loadVisitorCount()
+    })
+  }, [])
 
   const handleInputChange = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
@@ -271,13 +308,20 @@ export default function HomePage() {
       <footer className="bg-white/80 backdrop-blur-sm border-t border-blue-100 py-6 mt-8">
         <div className="container mx-auto px-4 text-center">
           <div className="space-y-2">
+            
             <p className="text-sm text-gray-600">
               © {new Date().getFullYear()} CyberVaani Quiz. All rights reserved.
             </p>
             <p className="text-sm text-gray-500">
               Designed & Developed by{" "}
-              <a href="https://portfolio-ashwanik0777.vercel.app/"><span className="font-semibold text-blue-600">Ashwani Kushwaha</span></a>
+              <a href="https://portfolio-ashwanik0777.vercel.app/" className="hover:underline"><span className="font-semibold text-blue-600">Ashwani Kushwaha</span></a>
             </p>
+            <div className="flex items-center justify-center gap-2 text-sm text-gray-600">
+              <Eye className="h-4 w-4 text-blue-600" />
+              <span>
+                <span className="font-semibold">{visitorCount !== null ? visitorCount.toLocaleString() : "..."}</span> Visitors
+              </span>
+            </div>
           </div>
         </div>
       </footer>
