@@ -62,7 +62,6 @@ export default function AdminPage() {
   const [questionCount, setQuestionCount] = useState<number>(10)
   const eventSourceRef = useRef<EventSource | null>(null)
 
-  // Check if already authenticated
   useEffect(() => {
     const authStatus = sessionStorage.getItem("adminAuth")
     const token = sessionStorage.getItem("adminToken")
@@ -74,7 +73,6 @@ export default function AdminPage() {
     }
   }, [])
 
-  // Connect to real-time stream
   useEffect(() => {
     if (!isAuthenticated || !authToken) return
 
