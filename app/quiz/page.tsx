@@ -24,6 +24,8 @@ export default function QuizPage() {
   const [showCountdown, setShowCountdown] = useState(false)
   const [userRank, setUserRank] = useState<number | null>(null)
   const [userPoints, setUserPoints] = useState(0)
+  const [userScore, setUserScore] = useState(0)
+  const [userPercentage, setUserPercentage] = useState(0)
   const [questionStartTime, setQuestionStartTime] = useState<Date | null>(null)
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([])
   const [selectedAnswerIndex, setSelectedAnswerIndex] = useState<number | null>(null)
@@ -77,6 +79,8 @@ export default function QuizPage() {
           if (userEntry) {
             setUserRank(userEntry.rank)
             setUserPoints(userEntry.totalPoints || 0)
+            setUserScore(userEntry.score || 0)
+            setUserPercentage(userEntry.percentage || 0)
           }
 
           // Handle countdown
@@ -91,13 +95,21 @@ export default function QuizPage() {
             // Quiz completed - redirect to results
             setShowLeaderboard(true)
             setTimeUp(true)
+
+            // Get final stats from latest state
+            const finalUserEntry = state.leaderboard?.find(
+              (entry) => entry.userId === currentUser.userId || entry.rollNo === currentUser.rollNo
+            )
+
             // Store results and redirect
             setTimeout(() => {
               const resultsData = {
                 user: currentUser,
                 leaderboard: state.leaderboard || [],
-                userRank,
-                userPoints,
+                userRank: finalUserEntry?.rank || 0,
+                userPoints: finalUserEntry?.totalPoints || 0,
+                score: finalUserEntry?.score || 0, // Use the score from the leaderboard directly
+                percentage: finalUserEntry?.percentage || 0,
                 totalQuestions: state.totalQuestions || 10,
                 completedAt: new Date().toISOString(),
               }

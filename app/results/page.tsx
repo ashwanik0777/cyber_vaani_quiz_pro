@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Trophy, Star, Award, ExternalLink, Home, Users, CheckCircle, XCircle } from "lucide-react"
@@ -164,7 +164,7 @@ export default function ResultsPage() {
                 {/* Score Display */}
                 <div className="text-center">
                   <div className="mb-4">
-                    <div className={`text-6xl font-bold ${getScoreColor(score)} mb-2`}>{score}%</div>
+                    <div className={`text-6xl font-bold ${getScoreColor(score)} mb-2`}>{score}pts</div>
                     <Badge className={scoreBadge.color}>{scoreBadge.text}</Badge>
                   </div>
                   <Progress value={score} className="h-3 mb-4" />
