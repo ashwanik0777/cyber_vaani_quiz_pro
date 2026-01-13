@@ -10,9 +10,19 @@ export async function GET(request: NextRequest) {
   
   const stream = new ReadableStream({
     async start(controller) {
+      let isStreamClosed = false
+
       const send = (data: any) => {
-        const message = `data: ${JSON.stringify(data)}\n\n`
-        controller.enqueue(encoder.encode(message))
+        if (isStreamClosed) return
+        try {
+          const message = `data: ${JSON.stringify(data)}\n\n`
+          controller.enqueue(encoder.encode(message))
+        } catch (error) {
+          // Ignore errors if stream is closed
+          if (!isStreamClosed) {
+            console.error("Error sending to stream:", error)
+          }
+        }
       }
 
       // Send initial state
@@ -47,6 +57,11 @@ export async function GET(request: NextRequest) {
 
       // Poll for updates every 500ms
       const interval = setInterval(async () => {
+        if (isStreamClosed) {
+          clearInterval(interval)
+          return
+        }
+
         try {
           const db = await getDatabase()
           const quizStateCollection = db.collection<QuizState>("quizState")
@@ -90,8 +105,13 @@ export async function GET(request: NextRequest) {
 
       // Cleanup on close
       request.signal.addEventListener("abort", () => {
+        isStreamClosed = true
         clearInterval(interval)
-        controller.close()
+        try {
+          controller.close()
+        } catch (e) {
+          // Ignore if already closed
+        }
       })
     },
   })
