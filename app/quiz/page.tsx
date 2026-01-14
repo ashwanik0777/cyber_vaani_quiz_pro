@@ -34,6 +34,7 @@ export default function QuizPage() {
   const [timeUp, setTimeUp] = useState(false)
   const eventSourceRef = useRef<EventSource | null>(null)
   const timerRef = useRef<NodeJS.Timeout | null>(null)
+  const isRedirectingRef = useRef(false)
 
   // Initialize user and questions
   useEffect(() => {
@@ -60,7 +61,8 @@ export default function QuizPage() {
   useEffect(() => {
     if (!currentUser) return
 
-    const eventSource = new EventSource("/api/quiz/stream")
+    const userId = currentUser.userId || currentUser.email || currentUser._id
+    const eventSource = new EventSource(`/api/quiz/stream?userId=${encodeURIComponent(userId)}`)
     eventSourceRef.current = eventSource
 
     eventSource.onmessage = (event) => {
@@ -72,15 +74,24 @@ export default function QuizPage() {
           setQuizState(state)
           setLeaderboard(state.leaderboard || [])
 
-          // Update user rank
-          const userEntry = state.leaderboard?.find(
-            (entry) => entry.userId === currentUser.userId || entry.rollNo === currentUser.rollNo
-          )
-          if (userEntry) {
-            setUserRank(userEntry.rank)
-            setUserPoints(userEntry.totalPoints || 0)
-            setUserScore(userEntry.score || 0)
-            setUserPercentage(userEntry.percentage || 0)
+          // Update user rank and stats from personalized stream data
+          const userData = (data.data as any).userData
+          if (userData) {
+             setUserRank(userData.rank)
+             setUserPoints(userData.totalPoints)
+             setUserScore(userData.score)
+             setUserPercentage(userData.percentage)
+          } else {
+             // Fallback to leaderboard check if userData not provided (should not happen with updated backend)
+             const userEntry = state.leaderboard?.find(
+               (entry) => entry.userId === currentUser.userId || entry.rollNo === currentUser.rollNo
+             )
+             if (userEntry) {
+               setUserRank(userEntry.rank)
+               setUserPoints(userEntry.totalPoints || 0)
+               setUserScore(userEntry.score || 0)
+               setUserPercentage(userEntry.percentage || 0)
+             }
           }
 
           // Handle countdown
@@ -92,28 +103,53 @@ export default function QuizPage() {
           
           // Show leaderboard when question ends or quiz completes
           if (state.endedAt) {
+            if (isRedirectingRef.current) return
+            isRedirectingRef.current = true
+            
             // Quiz completed - redirect to results
             setShowLeaderboard(true)
             setTimeUp(true)
 
             // Get final stats from latest state
-            const finalUserEntry = state.leaderboard?.find(
-              (entry) => entry.userId === currentUser.userId || entry.rollNo === currentUser.rollNo
-            )
+            let finalRank = 0
+            let finalPoints = 0
+            let finalScore = 0
+            let finalPercentage = 0
+
+            const userData = (data.data as any).userData
+            if (userData) {
+               finalRank = userData.rank
+               finalPoints = userData.totalPoints
+               finalScore = userData.score
+               finalPercentage = userData.percentage
+            } else {
+               const finalUserEntry = state.leaderboard?.find(
+                  (entry) => entry.userId === currentUser.userId || entry.rollNo === currentUser.rollNo
+               )
+               if (finalUserEntry) {
+                   finalRank = finalUserEntry.rank
+                   finalPoints = finalUserEntry.totalPoints
+                   finalScore = finalUserEntry.score
+                   finalPercentage = finalUserEntry.percentage
+               }
+            }
 
             // Store results and redirect
             setTimeout(() => {
               const resultsData = {
                 user: currentUser,
                 leaderboard: state.leaderboard || [],
-                userRank: finalUserEntry?.rank || 0,
-                userPoints: finalUserEntry?.totalPoints || 0,
-                score: finalUserEntry?.score || 0, // Use the score from the leaderboard directly
-                percentage: finalUserEntry?.percentage || 0,
+                userRank: finalRank,
+                userPoints: finalPoints,
+                score: finalScore,
+                percentage: finalPercentage,
                 totalQuestions: state.totalQuestions || 10,
                 completedAt: new Date().toISOString(),
               }
               sessionStorage.setItem("quizResults", JSON.stringify(resultsData))
+              if (eventSourceRef.current) {
+                eventSourceRef.current.close()
+              }
               router.push("/results")
             }, 3000)
           } else if (!state.isActive && state.currentQuestionIndex !== undefined && !state.countdownActive && state.currentQuestionIndex >= 0) {

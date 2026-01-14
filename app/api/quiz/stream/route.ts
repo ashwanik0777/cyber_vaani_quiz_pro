@@ -8,6 +8,8 @@ export const dynamic = 'force-dynamic'
 export async function GET(request: NextRequest) {
   const encoder = new TextEncoder()
   
+  const userId = request.nextUrl.searchParams.get("userId")
+  
   const stream = new ReadableStream({
     async start(controller) {
       let isStreamClosed = false
@@ -89,12 +91,36 @@ export async function GET(request: NextRequest) {
               lastAnsweredAt: result.updatedAt || result.completedAt || new Date(),
             }))
 
+            let userData = null
+            if (userId) {
+              const userResult = await quizResultsCollection.findOne({ userId })
+              if (userResult) {
+                // Determine rank if not in top 20
+                let rank = leaderboard.findIndex(entry => entry.userId === userId) + 1
+                if (rank === 0) {
+                   const higherScores = await quizResultsCollection.countDocuments({
+                     totalPoints: { $gt: userResult.totalPoints || 0 }
+                   })
+                   rank = higherScores + 1
+                }
+                
+                userData = {
+                  userId: userResult.userId,
+                  totalPoints: userResult.totalPoints || 0,
+                  score: userResult.score || 0,
+                  percentage: userResult.percentage || 0,
+                  rank
+                }
+              }
+            }
+
             send({
               type: "update",
               data: {
                 ...state,
                 leaderboard,
-                participants: results.length,
+                participants: await quizResultsCollection.countDocuments(),
+                userData,
               },
             })
           }
