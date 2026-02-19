@@ -57,12 +57,10 @@ export async function GET(request: NextRequest) {
         send({ type: "error", data: { message: "Connection error" } })
       }
 
-      // Poll for updates every 500ms
-      const interval = setInterval(async () => {
-        if (isStreamClosed) {
-          clearInterval(interval)
-          return
-        }
+      // Poll for updates using recursive setTimeout to prevent overlap
+      // and reduce load
+      const poll = async () => {
+        if (isStreamClosed) return
 
         try {
           const db = await getDatabase()
@@ -127,18 +125,37 @@ export async function GET(request: NextRequest) {
         } catch (error) {
           console.error("Error polling:", error)
         }
-      }, 500)
+
+        // Schedule next poll
+        if (!isStreamClosed) {
+          setTimeout(poll, 2000)
+        }
+      }
+
+      // Start polling
+      poll()
 
       // Cleanup on close
       request.signal.addEventListener("abort", () => {
         isStreamClosed = true
-        clearInterval(interval)
         try {
           controller.close()
         } catch (e) {
           // Ignore if already closed
         }
       })
+
+    
+      setTimeout(() => {
+        if (!isStreamClosed) {
+          isStreamClosed = true
+          try {
+            controller.close()
+          } catch (e) {
+            // Ignore
+          }
+        }
+      }, 45000)
     },
   })
 

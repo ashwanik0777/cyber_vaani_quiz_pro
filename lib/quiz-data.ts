@@ -2,7 +2,7 @@ export interface QuizQuestion {
   id: number
   question: string
   options: string[]
-  correctAnswer: number // index of correct option (0-3)
+  correctAnswer: number 
   // category: "cybercrime" | "cyber-literacy" | "online-safety" | "digital-security"
   category: "html" | "css" | "tailwind" 
 }
