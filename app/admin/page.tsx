@@ -7,12 +7,9 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Shield, Users, Trophy, Eye, EyeOff, LogOut, Download, Play, Pause, SkipForward, RotateCcw, Clock } from "lucide-react"
-import { getScoreColor } from "@/lib/quiz-utils"
+import { Shield, Users, Trophy, Eye, EyeOff, LogOut, Play, Pause, SkipForward, RotateCcw, Clock, ArrowRight } from "lucide-react"
 import { quizQuestions } from "@/lib/quiz-data"
 import type { QuizState, LeaderboardEntry } from "@/lib/models"
 
@@ -21,29 +18,8 @@ const ADMIN_CREDENTIALS = {
   password: process.env.NEXT_PUBLIC_ADMIN_PASSWORD || "cyber123",
 }
 
-interface QuizResult {
-  _id: string
-  sessionId?: string
-  userId?: string
-  name: string
-  rollNo: string
-  mobileNo: string
-  email: string
-  score: number
-  totalQuestions: number
-  percentage: number
-  completedAt: string
-  isEligibleForReward: boolean
-  rewardGiven: boolean
-  totalPoints?: number
-}
-
 interface AdminData {
-  users: QuizResult[]
-  allAttempts: QuizResult[]
   activeSessionId?: string | null
-  sessionLeaderboard?: LeaderboardEntry[]
-  globalBestLeaderboard?: LeaderboardEntry[]
   recentSessions?: Array<{
     sessionId: string
     startedAt: string
@@ -68,12 +44,10 @@ export default function AdminPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [loginError, setLoginError] = useState("")
   const [adminData, setAdminData] = useState<AdminData | null>(null)
-  const [searchTerm, setSearchTerm] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [authToken, setAuthToken] = useState("")
   const [quizState, setQuizState] = useState<QuizState | null>(null)
   const [sessionLeaderboard, setSessionLeaderboard] = useState<LeaderboardEntry[]>([])
-  const [globalLeaderboard, setGlobalLeaderboard] = useState<LeaderboardEntry[]>([])
   const [currentQuestionDisplay, setCurrentQuestionDisplay] = useState<string>("")
   const [questionCount, setQuestionCount] = useState<number>(10)
   const eventSourceRef = useRef<EventSource | null>(null)
@@ -102,7 +76,6 @@ export default function AdminPage() {
           const state = data.data as QuizState
           setQuizState(state)
           setSessionLeaderboard(state.leaderboard || [])
-          setGlobalLeaderboard((state as any).globalLeaderboard || [])
         }
       } catch (error) {
         console.error("Error parsing SSE data:", error)
@@ -133,8 +106,6 @@ export default function AdminPage() {
 
       const data = await response.json()
       setAdminData(data.data)
-      setSessionLeaderboard(data.data?.sessionLeaderboard || [])
-      setGlobalLeaderboard(data.data?.globalBestLeaderboard || [])
     } catch (error) {
       console.error("Error loading admin data:", error)
     } finally {
@@ -154,8 +125,6 @@ export default function AdminPage() {
         const data = await response.json()
         setQuizState(data.state)
         setSessionLeaderboard(data.state?.leaderboard || [])
-        setGlobalLeaderboard(data.state?.globalLeaderboard || [])
-        // Set question count from state
         if (data.state?.totalQuestions) {
           setQuestionCount(data.state.totalQuestions)
         }
@@ -184,7 +153,6 @@ export default function AdminPage() {
         const data = await response.json()
         setQuizState(data.state)
         setSessionLeaderboard(data.state?.leaderboard || [])
-        setGlobalLeaderboard(data.state?.globalLeaderboard || [])
       }
     } catch (error) {
       console.error("Error updating quiz state:", error)
@@ -197,34 +165,29 @@ export default function AdminPage() {
   }
 
   const handleStartCountdown = async () => {
-    // Get random question
     const randomQuestion = getRandomQuestion()
     setCurrentQuestionDisplay(randomQuestion.question)
-    
+
     await updateQuizState("start_countdown")
-    
-    // Auto-start question after countdown (5 seconds)
+
     setTimeout(async () => {
       await updateQuizState("start_question", randomQuestion.id)
     }, 5000)
   }
 
   const handleStartQuestion = async () => {
-    // Get random question
     const randomQuestion = getRandomQuestion()
     setCurrentQuestionDisplay(randomQuestion.question)
     await updateQuizState("start_question", randomQuestion.id)
   }
 
   const handleNextQuestion = async () => {
-    // Check if we've reached the question limit
     if (quizState && quizState.currentQuestionIndex >= questionCount - 1) {
       alert(`Quiz completed! You've reached the limit of ${questionCount} questions.`)
       await updateQuizState("end_quiz")
       return
     }
-    
-    // Get random question
+
     const randomQuestion = getRandomQuestion()
     setCurrentQuestionDisplay(randomQuestion.question)
     await updateQuizState("next_question", randomQuestion.id)
@@ -270,50 +233,6 @@ export default function AdminPage() {
     }
   }
 
-  const handleRewardToggle = async (userId: string, currentStatus: boolean) => {
-    try {
-      const response = await fetch("/api/admin/reward", {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${authToken}`,
-        },
-        body: JSON.stringify({
-          userId,
-          rewardGiven: !currentStatus,
-        }),
-      })
-
-      if (response.ok) {
-        await loadAdminData(authToken)
-      }
-    } catch (error) {
-      console.error("Error updating reward status:", error)
-    }
-  }
-
-  const exportData = () => {
-    if (!adminData) return
-
-    const dataStr = JSON.stringify(adminData.allAttempts || adminData.users, null, 2)
-    const dataUri = "data:application/json;charset=utf-8," + encodeURIComponent(dataStr)
-    const exportFileDefaultName = `quiz-attempts-${new Date().toISOString().split("T")[0]}.json`
-
-    const linkElement = document.createElement("a")
-    linkElement.setAttribute("href", dataUri)
-    linkElement.setAttribute("download", exportFileDefaultName)
-    linkElement.click()
-  }
-
-  const filteredUsers =
-    adminData?.users.filter(
-      (user) =>
-        user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        user.rollNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        user.email.toLowerCase().includes(searchTerm.toLowerCase()),
-    ) || []
-
-  // Login Form
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-blue-100 flex items-center justify-center">
@@ -383,7 +302,6 @@ export default function AdminPage() {
     )
   }
 
-  // Loading state
   if (isLoading && !adminData) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-blue-100 flex items-center justify-center">
@@ -395,45 +313,44 @@ export default function AdminPage() {
     )
   }
 
-  // Admin Dashboard
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-blue-100">
-      {/* Header */}
       <header className="bg-white/80 backdrop-blur-sm border-b border-blue-100 sticky top-0 z-10">
         <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-blue-500 rounded-lg">
                 <Shield className="h-6 w-6 text-white" />
               </div>
               <div>
-                <h1 className="text-xl font-bold text-gray-900">Admin Dashboard</h1>
-                <p className="text-sm text-blue-600">Quiz Control & User Management</p>
+                <h1 className="text-xl font-bold text-gray-900">Admin Control Center</h1>
+                <p className="text-sm text-blue-600">Quiz operations in one place</p>
               </div>
             </div>
-            <Button onClick={handleLogout} variant="ghost" className="text-red-600 hover:text-red-700 hover:bg-red-50">
-              <LogOut className="h-4 w-4 mr-2" />
-              Logout
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" className="border-blue-200 text-blue-700" onClick={() => router.push("/admin/users")}>Users</Button>
+              <Button variant="outline" className="border-blue-200 text-blue-700" onClick={() => router.push("/admin/leaderboard")}>Leaderboard</Button>
+              <Button onClick={handleLogout} variant="ghost" className="text-red-600 hover:text-red-700 hover:bg-red-50">
+                <LogOut className="h-4 w-4 mr-2" />
+                Logout
+              </Button>
+            </div>
           </div>
         </div>
       </header>
 
       <main className="container mx-auto px-4 py-6">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Column - Quiz Controls & Leaderboard */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Quiz Control Panel */}
             <Card className="bg-white/90 backdrop-blur-sm border-0 shadow-sm">
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">
                   <Play className="h-5 w-5 text-blue-600" />
                   Quiz Controls
                 </CardTitle>
-                <CardDescription>Control the quiz flow and questions</CardDescription>
+                <CardDescription>Start, run and end session from here</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                {/* Question Count Selector */}
                 <div className="space-y-2">
                   <Label htmlFor="questionCount">Number of Questions</Label>
                   <Input
@@ -449,32 +366,19 @@ export default function AdminPage() {
                     disabled={quizState?.isActive || quizState?.countdownActive}
                     className="h-11"
                   />
-                  <p className="text-xs text-gray-500">
-                    Set the total number of questions for this quiz (1-50)
-                  </p>
                 </div>
 
-                {/* Current Question Info */}
-                {currentQuestionDisplay && (
-                  <div className="p-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg border-2 border-blue-200 shadow-sm">
-                    <p className="text-sm font-medium text-blue-900 mb-2 flex items-center gap-2">
-                      <span className="text-lg">📝</span> Current Question:
-                    </p>
-                    <p className="text-sm text-blue-800 font-medium leading-relaxed">
-                      {currentQuestionDisplay}
-                    </p>
+                {currentQuestionDisplay ? (
+                  <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                    <p className="text-sm font-semibold text-blue-900 mb-1">Current Question</p>
+                    <p className="text-sm text-blue-800">{currentQuestionDisplay}</p>
                   </div>
-                )}
-                
-                {!currentQuestionDisplay && (
-                  <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-                    <p className="text-sm text-gray-600 text-center">
-                      Questions will be randomly selected when quiz starts
-                    </p>
+                ) : (
+                  <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 text-sm text-gray-600 text-center">
+                    Question auto-picked when you start countdown/question.
                   </div>
                 )}
 
-                {/* Quiz State */}
                 {quizState && (
                   <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
                     <div className="grid grid-cols-2 gap-4 text-sm">
@@ -499,25 +403,24 @@ export default function AdminPage() {
                         <span className="ml-2 font-medium">{quizState.countdownValue || 0}</span>
                       </div>
                     </div>
-                    <div className="mt-3 text-xs text-gray-600">
+                    <div className="mt-2 text-xs text-gray-600">
                       <span className="font-medium">Active Session:</span> {quizState.activeSessionId || "Not started"}
                     </div>
                   </div>
                 )}
 
-                {/* Control Buttons */}
                 <div className="grid grid-cols-2 gap-3">
                   <Button
                     onClick={handleStartCountdown}
-                    className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white shadow-lg transform hover:scale-105 transition-all"
+                    className="bg-green-600 hover:bg-green-700 text-white"
                     disabled={quizState?.isActive || quizState?.countdownActive}
                   >
                     <Play className="h-4 w-4 mr-2" />
-                    Start Countdown (5-4-3-2-1)
+                    Start Countdown
                   </Button>
                   <Button
                     onClick={handleStartQuestion}
-                    className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white shadow-lg transform hover:scale-105 transition-all"
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
                     disabled={quizState?.isActive}
                   >
                     <Play className="h-4 w-4 mr-2" />
@@ -526,7 +429,7 @@ export default function AdminPage() {
                   <Button
                     onClick={handleNextQuestion}
                     variant="outline"
-                    className="border-blue-300 text-blue-700 hover:bg-blue-50 shadow-md transform hover:scale-105 transition-all"
+                    className="border-blue-300 text-blue-700 hover:bg-blue-50"
                     disabled={!quizState?.isActive}
                   >
                     <SkipForward className="h-4 w-4 mr-2" />
@@ -535,108 +438,43 @@ export default function AdminPage() {
                   <Button
                     onClick={handleEndQuiz}
                     variant="outline"
-                    className="border-red-300 text-red-700 hover:bg-red-50 shadow-md transform hover:scale-105 transition-all"
+                    className="border-red-300 text-red-700 hover:bg-red-50"
                     disabled={!quizState?.isActive}
                   >
                     <Pause className="h-4 w-4 mr-2" />
                     End Quiz
                   </Button>
                 </div>
-                <Button
-                  onClick={handleResetQuiz}
-                  variant="outline"
-                  className="w-full border-orange-200 text-orange-700 hover:bg-orange-50"
-                >
+
+                <Button onClick={handleResetQuiz} variant="outline" className="w-full border-orange-200 text-orange-700 hover:bg-orange-50">
                   <RotateCcw className="h-4 w-4 mr-2" />
                   Reset Quiz
                 </Button>
               </CardContent>
             </Card>
 
-            {/* Session Leaderboard */}
             <Card className="bg-white/90 backdrop-blur-sm border-0 shadow-sm">
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">
                   <Trophy className="h-5 w-5 text-yellow-500" />
                   Session Leaderboard (Top 20)
                 </CardTitle>
-                <CardDescription>Current session rankings based on points</CardDescription>
+                <CardDescription>Current live session rankings</CardDescription>
               </CardHeader>
               <CardContent>
                 {sessionLeaderboard.length === 0 ? (
-                  <p className="text-sm text-gray-500 text-center py-8">No rankings yet</p>
+                  <p className="text-sm text-gray-500 text-center py-6">No rankings yet</p>
                 ) : (
-                  <div className="space-y-2 max-h-[500px] overflow-y-auto">
+                  <div className="space-y-2 max-h-[450px] overflow-y-auto">
                     {sessionLeaderboard.slice(0, 20).map((entry, index) => (
-                      <div
-                        key={`${entry.userId}-${entry.rollNo}-${index}`}
-                        className={`p-3 rounded-lg border-2 transition-all ${
-                          index === 0
-                            ? "bg-yellow-50 border-yellow-300"
-                            : index === 1
-                              ? "bg-gray-50 border-gray-300"
-                              : index === 2
-                                ? "bg-orange-50 border-orange-300"
-                                : "bg-gray-50 border-gray-200"
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <div
-                              className={`w-8 h-8 rounded-full flex items-center justify-center font-bold ${
-                                index === 0
-                                  ? "bg-yellow-500 text-white"
-                                  : index === 1
-                                    ? "bg-gray-400 text-white"
-                                    : index === 2
-                                      ? "bg-orange-500 text-white"
-                                      : "bg-gray-300 text-gray-700"
-                              }`}
-                            >
-                              {index + 1}
-                            </div>
-                            <div>
-                              <p className="font-medium text-gray-900">{entry.name}</p>
-                              <p className="text-xs text-gray-500">{entry.rollNo}</p>
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <p className="font-bold text-green-600">{entry.totalPoints} pts</p>
-                            <p className="text-xs text-gray-500">
-                              {entry.score}/{entry.totalQuestions} ({entry.percentage}%)
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Global Best Leaderboard */}
-            <Card className="bg-white/90 backdrop-blur-sm border-0 shadow-sm">
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Trophy className="h-5 w-5 text-blue-600" />
-                  Global Best Leaderboard (Top 20)
-                </CardTitle>
-                <CardDescription>Each student ka best performance</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {globalLeaderboard.length === 0 ? (
-                  <p className="text-sm text-gray-500 text-center py-8">No rankings yet</p>
-                ) : (
-                  <div className="space-y-2 max-h-[400px] overflow-y-auto">
-                    {globalLeaderboard.slice(0, 20).map((entry, index) => (
-                      <div key={`${entry.userId}-${entry.rollNo}-${index}`} className="p-3 rounded-lg border border-blue-100 bg-blue-50/50">
+                      <div key={`${entry.userId}-${entry.rollNo}-${index}`} className="p-3 rounded-lg border border-gray-200 bg-gray-50">
                         <div className="flex items-center justify-between">
                           <div>
                             <p className="font-medium text-gray-900">#{index + 1} {entry.name}</p>
                             <p className="text-xs text-gray-500">{entry.rollNo}</p>
                           </div>
                           <div className="text-right">
-                            <p className="font-bold text-blue-700">{entry.totalPoints} pts</p>
+                            <p className="font-bold text-green-600">{entry.totalPoints} pts</p>
                             <p className="text-xs text-gray-500">{entry.score}/{entry.totalQuestions} ({entry.percentage}%)</p>
                           </div>
                         </div>
@@ -648,9 +486,7 @@ export default function AdminPage() {
             </Card>
           </div>
 
-          {/* Right Column - Stats & User Management */}
           <div className="lg:col-span-1 space-y-6">
-            {/* Stats Cards */}
             <div className="grid grid-cols-1 gap-4">
               <Card className="bg-white/90 backdrop-blur-sm border-0 shadow-sm">
                 <CardContent className="p-4">
@@ -660,57 +496,7 @@ export default function AdminPage() {
                     </div>
                     <div>
                       <p className="text-sm text-gray-600">Total Users</p>
-                      <p className="text-xl font-bold text-gray-900">
-                        {adminData?.statistics.totalUsers || 0}
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="bg-white/90 backdrop-blur-sm border-0 shadow-sm">
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-green-100 rounded-lg">
-                      <Trophy className="h-5 w-5 text-green-600" />
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-600">Eligible for Rewards</p>
-                      <p className="text-xl font-bold text-gray-900">
-                        {adminData?.statistics.eligibleForRewards || 0}
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="bg-white/90 backdrop-blur-sm border-0 shadow-sm">
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-yellow-100 rounded-lg">
-                      <Trophy className="h-5 w-5 text-yellow-600" />
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-600">Rewards Given</p>
-                      <p className="text-xl font-bold text-gray-900">
-                        {adminData?.statistics.rewardsGiven || 0}
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="bg-white/90 backdrop-blur-sm border-0 shadow-sm">
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-purple-100 rounded-lg">
-                      <Trophy className="h-5 w-5 text-purple-600" />
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-600">Average Score</p>
-                      <p className="text-xl font-bold text-gray-900">
-                        {adminData?.statistics.averageScore || 0}%
-                      </p>
+                      <p className="text-xl font-bold text-gray-900">{adminData?.statistics.totalUsers || 0}</p>
                     </div>
                   </div>
                 </CardContent>
@@ -724,9 +510,7 @@ export default function AdminPage() {
                     </div>
                     <div>
                       <p className="text-sm text-gray-600">Session Participants</p>
-                      <p className="text-xl font-bold text-gray-900">
-                        {adminData?.statistics.sessionParticipants || 0}
-                      </p>
+                      <p className="text-xl font-bold text-gray-900">{adminData?.statistics.sessionParticipants || 0}</p>
                     </div>
                   </div>
                 </CardContent>
@@ -740,26 +524,34 @@ export default function AdminPage() {
                     </div>
                     <div>
                       <p className="text-sm text-gray-600">Total Attempts</p>
-                      <p className="text-xl font-bold text-gray-900">
-                        {adminData?.statistics.totalAttempts || 0}
-                      </p>
+                      <p className="text-xl font-bold text-gray-900">{adminData?.statistics.totalAttempts || 0}</p>
                     </div>
                   </div>
                 </CardContent>
               </Card>
             </div>
 
-            {/* Session History */}
+            <Card className="bg-white/90 backdrop-blur-sm border-0 shadow-sm">
+              <CardHeader>
+                <CardTitle className="text-lg">Separate Pages</CardTitle>
+                <CardDescription>Heavy sections shifted here</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <Button className="w-full justify-between" variant="outline" onClick={() => router.push("/admin/users")}>User Management <ArrowRight className="h-4 w-4" /></Button>
+                <Button className="w-full justify-between" variant="outline" onClick={() => router.push("/admin/leaderboard")}>Global Leaderboard <ArrowRight className="h-4 w-4" /></Button>
+              </CardContent>
+            </Card>
+
             <Card className="bg-white/90 backdrop-blur-sm border-0 shadow-sm">
               <CardHeader>
                 <CardTitle className="text-lg">Recent Sessions</CardTitle>
-                <CardDescription>Session-wise participation and progress</CardDescription>
+                <CardDescription>Quick session-wise summary</CardDescription>
               </CardHeader>
               <CardContent>
                 {(adminData?.recentSessions || []).length === 0 ? (
                   <p className="text-sm text-gray-500">No sessions yet</p>
                 ) : (
-                  <div className="space-y-2 max-h-[250px] overflow-y-auto">
+                  <div className="space-y-2 max-h-[260px] overflow-y-auto">
                     {(adminData?.recentSessions || []).map((session) => (
                       <div key={session.sessionId} className="p-3 rounded-lg border border-gray-200 bg-gray-50">
                         <p className="text-xs font-semibold text-gray-800">{session.sessionId}</p>
@@ -771,66 +563,6 @@ export default function AdminPage() {
                     ))}
                   </div>
                 )}
-              </CardContent>
-            </Card>
-
-            {/* User Management */}
-            <Card className="bg-white/90 backdrop-blur-sm border-0 shadow-sm">
-              <CardHeader>
-                <CardTitle className="text-lg">User Management</CardTitle>
-                <CardDescription>Search and manage users</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <Input
-                  placeholder="Search by name, roll number, or email..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="h-10"
-                />
-                <Button
-                  onClick={exportData}
-                  variant="outline"
-                  className="w-full border-blue-200 text-blue-700 hover:bg-blue-50"
-                >
-                  <Download className="h-4 w-4 mr-2" />
-                  Export Data
-                </Button>
-                <div className="max-h-[400px] overflow-y-auto space-y-2">
-                  {filteredUsers.slice(0, 10).map((user) => (
-                    <div
-                      key={user._id || `${user.rollNo}-${user.email}`}
-                      className="p-3 rounded-lg border border-gray-200 bg-gray-50"
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <div>
-                          <p className="font-medium text-sm text-gray-900">{user.name}</p>
-                          <p className="text-xs text-gray-500">{user.rollNo}</p>
-                        </div>
-                        <span className={`text-xs font-semibold ${getScoreColor(user.percentage)}`}>
-                          {user.percentage}%
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-gray-600">
-                          {user.score}/{user.totalQuestions}
-                        </span>
-                        {user.isEligibleForReward && (
-                          <div className="flex items-center space-x-2">
-                            <Checkbox
-                              id={`reward-${user._id || user.rollNo}`}
-                              checked={user.rewardGiven}
-                              onCheckedChange={() => user._id && handleRewardToggle(user._id, user.rewardGiven)}
-                              disabled={!user._id}
-                            />
-                            <Label htmlFor={`reward-${user._id || user.rollNo}`} className="text-xs cursor-pointer">
-                              {user.rewardGiven ? "Given" : "Pending"}
-                            </Label>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
               </CardContent>
             </Card>
           </div>
