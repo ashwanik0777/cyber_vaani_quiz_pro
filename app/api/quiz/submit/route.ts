@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getDatabase } from "@/lib/mongodb"
-import type { QuizResult } from "@/lib/models"
+import type { QuizResult, QuizState } from "@/lib/models"
 
 export const dynamic = 'force-dynamic'
 
@@ -16,9 +16,17 @@ export async function POST(request: NextRequest) {
 
     const db = await getDatabase()
     const quizResultsCollection = db.collection<QuizResult>("quizResults")
+    const quizStateCollection = db.collection<QuizState>("quizState")
+    const state = await quizStateCollection.findOne({})
+    const activeSessionId = state?.activeSessionId || null
 
-    // Check if user has already completed quiz
+    if (!activeSessionId) {
+      return NextResponse.json({ error: "No active quiz session" }, { status: 400 })
+    }
+
+    // Check if user has already completed this session
     const existingResult = await quizResultsCollection.findOne({
+      sessionId: activeSessionId,
       $or: [{ rollNo: rollNo }, { mobileNo: mobileNo }, { email: email }],
     })
 
@@ -31,6 +39,7 @@ export async function POST(request: NextRequest) {
 
     // Create quiz result
     const quizResult: QuizResult = {
+      sessionId: activeSessionId,
       userId: userId || "",
       name,
       rollNo,
@@ -43,6 +52,8 @@ export async function POST(request: NextRequest) {
       completedAt: new Date(),
       isEligibleForReward,
       rewardGiven: false,
+      totalPoints: 0,
+      updatedAt: new Date(),
     }
 
     const result = await quizResultsCollection.insertOne(quizResult)

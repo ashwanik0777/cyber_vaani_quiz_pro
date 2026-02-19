@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getDatabase } from "@/lib/mongodb"
-import type { QuizResult } from "@/lib/models"
+import type { QuizResult, QuizState } from "@/lib/models"
 
 export const dynamic = 'force-dynamic'
 
@@ -17,17 +17,31 @@ export async function GET(request: NextRequest) {
 
     const db = await getDatabase()
     const quizResultsCollection = db.collection<QuizResult>("quizResults")
+    const quizStateCollection = db.collection<QuizState>("quizState")
+    const state = await quizStateCollection.findOne({})
+    const activeSessionId = state?.activeSessionId || null
 
     const query: any = { $or: [] }
     if (rollNo) query.$or.push({ rollNo })
     if (mobileNo) query.$or.push({ mobileNo })
     if (email) query.$or.push({ email })
 
-    const result = await quizResultsCollection.findOne(query)
+    const anyResult = await quizResultsCollection.findOne(query)
+
+    let sessionResult: QuizResult | null = null
+    if (activeSessionId) {
+      sessionResult = await quizResultsCollection.findOne({
+        ...query,
+        sessionId: activeSessionId,
+      })
+    }
 
     return NextResponse.json({
-      hasCompleted: !!result,
-      result: result || null,
+      hasCompleted: !!sessionResult,
+      hasCompletedInSession: !!sessionResult,
+      hasCompletedAny: !!anyResult,
+      activeSessionId,
+      result: sessionResult || null,
     })
   } catch (error) {
     console.error("Error checking quiz completion:", error)

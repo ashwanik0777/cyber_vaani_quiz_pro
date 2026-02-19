@@ -139,6 +139,7 @@ export default function QuizPage() {
               const resultsData = {
                 user: currentUser,
                 leaderboard: state.leaderboard || [],
+                globalLeaderboard: (data.data as any).globalLeaderboard || [],
                 userRank: finalRank,
                 userPoints: finalPoints,
                 score: finalScore,

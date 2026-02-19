@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getDatabase } from "@/lib/mongodb"
-import type { User } from "@/lib/models"
+import type { User, QuizState } from "@/lib/models"
 
 export const dynamic = 'force-dynamic'
 
@@ -16,6 +16,24 @@ export async function POST(request: NextRequest) {
 
     const db = await getDatabase()
     const usersCollection = db.collection<User>("users")
+    const quizStateCollection = db.collection<QuizState>("quizState")
+    const sessionRegistrationsCollection = db.collection("sessionRegistrations")
+    const state = await quizStateCollection.findOne({})
+    const activeSessionId = state?.activeSessionId || null
+
+    if (activeSessionId) {
+      const existingRegistration = await sessionRegistrationsCollection.findOne({
+        sessionId: activeSessionId,
+        $or: [{ rollNo }, { mobileNo }, { email }],
+      })
+
+      if (existingRegistration) {
+        return NextResponse.json(
+          { error: "You have already entered the current quiz session." },
+          { status: 409 },
+        )
+      }
+    }
 
     // Check if user already exists
     const existingUser = await usersCollection.findOne({
@@ -23,10 +41,23 @@ export async function POST(request: NextRequest) {
     })
 
     if (existingUser) {
-      return NextResponse.json(
-        { error: "User already exists with this roll number, mobile number, or email" },
-        { status: 409 },
-      )
+      if (activeSessionId) {
+        await sessionRegistrationsCollection.insertOne({
+          sessionId: activeSessionId,
+          userId: existingUser._id?.toString() || "",
+          rollNo,
+          mobileNo,
+          email,
+          createdAt: new Date(),
+        })
+      }
+
+      return NextResponse.json({
+        success: true,
+        userId: existingUser._id,
+        user: existingUser,
+        isExistingUser: true,
+      })
     }
 
     // Create new user
@@ -40,6 +71,17 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await usersCollection.insertOne(newUser)
+
+    if (activeSessionId) {
+      await sessionRegistrationsCollection.insertOne({
+        sessionId: activeSessionId,
+        userId: result.insertedId.toString(),
+        rollNo,
+        mobileNo,
+        email,
+        createdAt: new Date(),
+      })
+    }
 
     return NextResponse.json({
       success: true,

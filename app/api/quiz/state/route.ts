@@ -1,38 +1,53 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getDatabase } from "@/lib/mongodb"
 import type { QuizState } from "@/lib/models"
-import { ObjectId } from "mongodb"
+import {
+  closeSessionMeta,
+  createSessionId,
+  getDefaultQuizState,
+  getGlobalBestLeaderboard,
+  getSessionLeaderboard,
+  getSessionParticipantsCount,
+  upsertSessionMeta,
+} from "@/lib/quiz-session"
 
 export const dynamic = 'force-dynamic'
+
+async function getOrCreateState(totalQuestions: number = 10) {
+  const db = await getDatabase()
+  const quizStateCollection = db.collection<QuizState>("quizState")
+
+  let state = await quizStateCollection.findOne({})
+  if (!state) {
+    const defaultState = getDefaultQuizState(totalQuestions)
+    const result = await quizStateCollection.insertOne(defaultState)
+    state = { ...defaultState, _id: result.insertedId }
+  }
+
+  return { db, quizStateCollection, state }
+}
+
+async function hydrateStateWithLeaderboards(db: Awaited<ReturnType<typeof getDatabase>>, state: QuizState) {
+  const sessionLeaderboard = await getSessionLeaderboard(db, state.activeSessionId)
+  const globalLeaderboard = await getGlobalBestLeaderboard(db)
+  const sessionParticipants = await getSessionParticipantsCount(db, state.activeSessionId)
+
+  return {
+    ...state,
+    participants: sessionParticipants,
+    sessionParticipants,
+    leaderboard: sessionLeaderboard,
+    globalLeaderboard,
+  }
+}
 
 // Get current quiz state
 export async function GET(request: NextRequest) {
   try {
-    const db = await getDatabase()
-    const quizStateCollection = db.collection<QuizState>("quizState")
+    const { db, state } = await getOrCreateState()
+    const hydratedState = await hydrateStateWithLeaderboards(db, state)
 
-    let state = await quizStateCollection.findOne({})
-    
-    // If no state exists, create default state
-    if (!state) {
-      const defaultState: QuizState = {
-        isActive: false,
-        currentQuestionIndex: 0,
-        currentQuestionId: null,
-        questionStartTime: null,
-        countdownActive: false,
-        countdownValue: 0,
-        totalQuestions: 10,
-        startedAt: null,
-        endedAt: null,
-        participants: 0,
-        leaderboard: [],
-      }
-      const result = await quizStateCollection.insertOne(defaultState)
-      state = { ...defaultState, _id: result.insertedId }
-    }
-
-    return NextResponse.json({ success: true, state })
+    return NextResponse.json({ success: true, state: hydratedState })
   } catch (error) {
     console.error("Error fetching quiz state:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
@@ -51,38 +66,28 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { action, questionId, totalQuestions } = body
 
-    const db = await getDatabase()
-    const quizStateCollection = db.collection<QuizState>("quizState")
-
-    let state = await quizStateCollection.findOne({})
-    
-    if (!state) {
-      const defaultState: QuizState = {
-        isActive: false,
-        currentQuestionIndex: 0,
-        currentQuestionId: null,
-        questionStartTime: null,
-        countdownActive: false,
-        countdownValue: 0,
-        totalQuestions: totalQuestions || 10,
-        startedAt: null,
-        endedAt: null,
-        participants: 0,
-        leaderboard: [],
-      }
-      const result = await quizStateCollection.insertOne(defaultState)
-      state = { ...defaultState, _id: result.insertedId }
-    }
+    const safeQuestionCount = Math.max(1, Math.min(50, Number(totalQuestions) || 10))
+    const { db, quizStateCollection, state } = await getOrCreateState(safeQuestionCount)
 
     let updateData: Partial<QuizState> = {}
+    let nextSessionId = state.activeSessionId || null
 
     switch (action) {
       case "start_countdown":
+        if (!nextSessionId || state.endedAt) {
+          nextSessionId = createSessionId()
+        }
         updateData = {
+          activeSessionId: nextSessionId,
           countdownActive: true,
           countdownValue: 5,
           isActive: false,
+          totalQuestions: safeQuestionCount,
+          currentQuestionIndex: state.endedAt ? 0 : state.currentQuestionIndex,
+          startedAt: state.endedAt ? null : state.startedAt,
+          endedAt: null,
         }
+        await upsertSessionMeta(db, nextSessionId, safeQuestionCount, new Date())
         // Auto-decrease countdown from 5 to 1
         setTimeout(async () => {
           await quizStateCollection.updateOne(
@@ -117,15 +122,23 @@ export async function POST(request: NextRequest) {
         break
       
       case "start_question":
+        if (!nextSessionId || state.endedAt) {
+          nextSessionId = createSessionId()
+        }
+
         updateData = {
+          activeSessionId: nextSessionId,
           isActive: true,
           currentQuestionId: questionId,
-          currentQuestionIndex: state.currentQuestionIndex,
+          currentQuestionIndex: state.endedAt ? 0 : state.currentQuestionIndex,
           questionStartTime: new Date(),
           countdownActive: false,
           countdownValue: 0,
-          startedAt: state.startedAt || new Date(),
+          startedAt: state.endedAt ? new Date() : (state.startedAt || new Date()),
+          endedAt: null,
+          totalQuestions: safeQuestionCount,
         }
+        await upsertSessionMeta(db, nextSessionId, safeQuestionCount, new Date())
         break
       
       case "next_question":
@@ -140,8 +153,11 @@ export async function POST(request: NextRequest) {
             countdownActive: false,
             countdownValue: 0,
           }
+          await closeSessionMeta(db, state.activeSessionId)
         } else {
           updateData = {
+            activeSessionId: state.activeSessionId,
+            isActive: true,
             currentQuestionIndex: state.currentQuestionIndex + 1,
             currentQuestionId: questionId || null,
             questionStartTime: questionId ? new Date() : null,
@@ -160,20 +176,25 @@ export async function POST(request: NextRequest) {
           countdownActive: false,
           countdownValue: 0,
         }
+        await closeSessionMeta(db, state.activeSessionId)
         break
       
       case "reset":
         updateData = {
+          activeSessionId: null,
           isActive: false,
           currentQuestionIndex: 0,
           currentQuestionId: null,
           questionStartTime: null,
           countdownActive: false,
           countdownValue: 0,
+          totalQuestions: safeQuestionCount,
           startedAt: null,
           endedAt: null,
           participants: 0,
+          sessionParticipants: 0,
           leaderboard: [],
+          globalLeaderboard: [],
         }
         break
       
@@ -194,10 +215,11 @@ export async function POST(request: NextRequest) {
     )
 
     const updatedState = await quizStateCollection.findOne({ _id: state._id })
+    const hydratedState = updatedState ? await hydrateStateWithLeaderboards(db, updatedState) : null
 
     return NextResponse.json({
       success: true,
-      state: updatedState,
+      state: hydratedState,
     })
   } catch (error) {
     console.error("Error updating quiz state:", error)

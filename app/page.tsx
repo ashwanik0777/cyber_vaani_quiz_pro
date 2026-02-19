@@ -112,8 +112,8 @@ export default function HomePage() {
       )
       const checkData = await checkResponse.json()
 
-      if (checkData.hasCompleted) {
-        setErrors({ general: "You have already completed the quiz. Each user can only take the quiz once." })
+      if (checkData.hasCompletedInSession || checkData.hasCompleted) {
+        setErrors({ general: "You already participated in the current quiz session. Please wait for the next session." })
         setIsLoading(false)
         return
       }
@@ -129,11 +129,7 @@ export default function HomePage() {
       const userData = await userResponse.json()
 
       if (!userResponse.ok) {
-        if (userResponse.status === 409) {
-          setErrors({ general: "A user with this roll number, mobile number, or email already exists." })
-        } else {
-          setErrors({ general: userData.error || "An error occurred. Please try again." })
-        }
+        setErrors({ general: userData.error || "An error occurred. Please try again." })
         setIsLoading(false)
         return
       }

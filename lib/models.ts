@@ -10,6 +10,7 @@ export interface User {
 
 export interface QuizResult {
   _id?: string
+  sessionId?: string
   userId: string
   name: string
   rollNo: string
@@ -31,6 +32,7 @@ export interface QuizResult {
   rewardGiven: boolean
   currentRank?: number
   totalPoints: number
+  updatedAt?: Date
 }
 
 export interface AdminUser {
@@ -41,6 +43,7 @@ export interface AdminUser {
 // Real-time Quiz State
 export interface QuizState {
   _id?: string
+  activeSessionId?: string | null
   isActive: boolean
   currentQuestionIndex: number
   currentQuestionId: number | null
@@ -51,7 +54,20 @@ export interface QuizState {
   startedAt: Date | null
   endedAt: Date | null
   participants: number
+  sessionParticipants?: number
   leaderboard: LeaderboardEntry[]
+  globalLeaderboard?: LeaderboardEntry[]
+}
+
+export interface QuizSession {
+  _id?: string
+  sessionId: string
+  startedAt: Date
+  endedAt: Date | null
+  totalQuestions: number
+  participants: number
+  createdAt: Date
+  updatedAt: Date
 }
 
 export interface LeaderboardEntry {

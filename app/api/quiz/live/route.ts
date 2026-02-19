@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getDatabase } from "@/lib/mongodb"
 import type { QuizState, LiveAnswer, LeaderboardEntry } from "@/lib/models"
-import { ObjectId } from "mongodb"
+import { getGlobalBestLeaderboard, getSessionLeaderboard } from "@/lib/quiz-session"
 
 export const dynamic = 'force-dynamic'
 
@@ -20,6 +20,13 @@ export async function POST(request: NextRequest) {
     const quizResultsCollection = db.collection("quizResults")
     const quizDataCollection = db.collection("quizData")
 
+    const currentState = await quizStateCollection.findOne({})
+    const activeSessionId = currentState?.activeSessionId
+
+    if (!activeSessionId) {
+      return NextResponse.json({ error: "No active quiz session" }, { status: 400 })
+    }
+
     // Get current question to check correct answer
     const { quizQuestions } = await import("@/lib/quiz-data")
     const question = quizQuestions.find((q) => q.id === questionId)
@@ -29,16 +36,14 @@ export async function POST(request: NextRequest) {
     }
 
     const isCorrect = selectedOption === question.correctAnswer
-    const questionStartTime = (await quizStateCollection.findOne({}))?.questionStartTime
-    
     // Calculate points based on time (faster = more points)
     // Max points: 100, decreases with time
     let pointsEarned = 0
     if (isCorrect) {
-      const maxTime = 15 // seconds
       const timeElapsed = timeTaken
       // First correct answer gets bonus
       const existingAnswers = await quizDataCollection.find({
+        sessionId: activeSessionId,
         questionId,
         isCorrect: true,
       }).sort({ answeredAt: 1 }).toArray()
@@ -60,10 +65,13 @@ export async function POST(request: NextRequest) {
       answeredAt: new Date(),
     }
 
-    await quizDataCollection.insertOne(answer)
+    await quizDataCollection.insertOne({
+      ...answer,
+      sessionId: activeSessionId,
+    })
 
     // Update or create user result
-    const existingResult = await quizResultsCollection.findOne({ userId })
+    const existingResult = await quizResultsCollection.findOne({ userId, sessionId: activeSessionId })
     
     if (existingResult) {
       // Update existing result
@@ -92,7 +100,7 @@ export async function POST(request: NextRequest) {
       const newPercentage = Math.round((newScore / existingResult.totalQuestions) * 100)
 
       await quizResultsCollection.updateOne(
-        { userId },
+        { userId, sessionId: activeSessionId },
         {
           $set: {
             answers: updatedAnswers,
@@ -106,14 +114,15 @@ export async function POST(request: NextRequest) {
     } else {
       // Create new result
       await quizResultsCollection.insertOne({
+        sessionId: activeSessionId,
         userId,
         name,
         rollNo,
         mobileNo: "",
         email: "",
         score: isCorrect ? 1 : 0,
-        totalQuestions: 10,
-        percentage: isCorrect ? 10 : 0,
+        totalQuestions: currentState?.totalQuestions || 10,
+        percentage: Math.round((isCorrect ? 1 : 0) / (currentState?.totalQuestions || 10) * 100),
         answers: [{
           questionId,
           selectedOption: question.options[selectedOption],
@@ -127,6 +136,7 @@ export async function POST(request: NextRequest) {
         rewardGiven: false,
         totalPoints: pointsEarned,
         currentRank: 0,
+        updatedAt: new Date(),
       })
     }
 
@@ -145,30 +155,17 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     const db = await getDatabase()
-    const quizResultsCollection = db.collection("quizResults")
+    const quizStateCollection = db.collection<QuizState>("quizState")
+    const state = await quizStateCollection.findOne({})
 
-    // Get all active participants sorted by total points
-    const results = await quizResultsCollection
-      .find({})
-      .sort({ totalPoints: -1, score: -1 })
-      .limit(20)
-      .toArray()
-
-    const leaderboard: LeaderboardEntry[] = results.map((result, index) => ({
-      userId: result.userId,
-      name: result.name,
-      rollNo: result.rollNo,
-      totalPoints: result.totalPoints || 0,
-      score: result.score || 0,
-      totalQuestions: result.totalQuestions || 10,
-      percentage: result.percentage || 0,
-      rank: index + 1,
-      lastAnsweredAt: result.updatedAt || result.completedAt || new Date(),
-    }))
+    const leaderboard: LeaderboardEntry[] = await getSessionLeaderboard(db, state?.activeSessionId)
+    const globalLeaderboard = await getGlobalBestLeaderboard(db)
 
     return NextResponse.json({
       success: true,
       leaderboard,
+      globalLeaderboard,
+      activeSessionId: state?.activeSessionId || null,
     })
   } catch (error) {
     console.error("Error fetching leaderboard:", error)

@@ -23,6 +23,8 @@ const ADMIN_CREDENTIALS = {
 
 interface QuizResult {
   _id: string
+  sessionId?: string
+  userId?: string
   name: string
   rollNo: string
   mobileNo: string
@@ -38,11 +40,24 @@ interface QuizResult {
 
 interface AdminData {
   users: QuizResult[]
+  allAttempts: QuizResult[]
+  activeSessionId?: string | null
+  sessionLeaderboard?: LeaderboardEntry[]
+  globalBestLeaderboard?: LeaderboardEntry[]
+  recentSessions?: Array<{
+    sessionId: string
+    startedAt: string
+    endedAt: string | null
+    totalQuestions: number
+    participants: number
+  }>
   statistics: {
     totalUsers: number
     eligibleForRewards: number
     averageScore: number
     rewardsGiven: number
+    totalAttempts?: number
+    sessionParticipants?: number
   }
 }
 
@@ -57,7 +72,8 @@ export default function AdminPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [authToken, setAuthToken] = useState("")
   const [quizState, setQuizState] = useState<QuizState | null>(null)
-  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([])
+  const [sessionLeaderboard, setSessionLeaderboard] = useState<LeaderboardEntry[]>([])
+  const [globalLeaderboard, setGlobalLeaderboard] = useState<LeaderboardEntry[]>([])
   const [currentQuestionDisplay, setCurrentQuestionDisplay] = useState<string>("")
   const [questionCount, setQuestionCount] = useState<number>(10)
   const eventSourceRef = useRef<EventSource | null>(null)
@@ -85,7 +101,8 @@ export default function AdminPage() {
         if (data.type === "state" || data.type === "update") {
           const state = data.data as QuizState
           setQuizState(state)
-          setLeaderboard(state.leaderboard || [])
+          setSessionLeaderboard(state.leaderboard || [])
+          setGlobalLeaderboard((state as any).globalLeaderboard || [])
         }
       } catch (error) {
         console.error("Error parsing SSE data:", error)
@@ -116,6 +133,8 @@ export default function AdminPage() {
 
       const data = await response.json()
       setAdminData(data.data)
+      setSessionLeaderboard(data.data?.sessionLeaderboard || [])
+      setGlobalLeaderboard(data.data?.globalBestLeaderboard || [])
     } catch (error) {
       console.error("Error loading admin data:", error)
     } finally {
@@ -134,6 +153,8 @@ export default function AdminPage() {
       if (response.ok) {
         const data = await response.json()
         setQuizState(data.state)
+        setSessionLeaderboard(data.state?.leaderboard || [])
+        setGlobalLeaderboard(data.state?.globalLeaderboard || [])
         // Set question count from state
         if (data.state?.totalQuestions) {
           setQuestionCount(data.state.totalQuestions)
@@ -162,6 +183,8 @@ export default function AdminPage() {
       if (response.ok) {
         const data = await response.json()
         setQuizState(data.state)
+        setSessionLeaderboard(data.state?.leaderboard || [])
+        setGlobalLeaderboard(data.state?.globalLeaderboard || [])
       }
     } catch (error) {
       console.error("Error updating quiz state:", error)
@@ -272,9 +295,9 @@ export default function AdminPage() {
   const exportData = () => {
     if (!adminData) return
 
-    const dataStr = JSON.stringify(adminData.users, null, 2)
+    const dataStr = JSON.stringify(adminData.allAttempts || adminData.users, null, 2)
     const dataUri = "data:application/json;charset=utf-8," + encodeURIComponent(dataStr)
-    const exportFileDefaultName = `quiz-results-${new Date().toISOString().split("T")[0]}.json`
+    const exportFileDefaultName = `quiz-attempts-${new Date().toISOString().split("T")[0]}.json`
 
     const linkElement = document.createElement("a")
     linkElement.setAttribute("href", dataUri)
@@ -469,12 +492,15 @@ export default function AdminPage() {
                       </div>
                       <div>
                         <span className="text-gray-600">Participants:</span>
-                        <span className="ml-2 font-medium">{quizState.participants}</span>
+                        <span className="ml-2 font-medium">{quizState.sessionParticipants ?? quizState.participants}</span>
                       </div>
                       <div>
                         <span className="text-gray-600">Countdown:</span>
                         <span className="ml-2 font-medium">{quizState.countdownValue || 0}</span>
                       </div>
+                    </div>
+                    <div className="mt-3 text-xs text-gray-600">
+                      <span className="font-medium">Active Session:</span> {quizState.activeSessionId || "Not started"}
                     </div>
                   </div>
                 )}
@@ -527,23 +553,23 @@ export default function AdminPage() {
               </CardContent>
             </Card>
 
-            {/* Real-time Leaderboard */}
+            {/* Session Leaderboard */}
             <Card className="bg-white/90 backdrop-blur-sm border-0 shadow-sm">
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">
                   <Trophy className="h-5 w-5 text-yellow-500" />
-                  Live Leaderboard (Top 20)
+                  Session Leaderboard (Top 20)
                 </CardTitle>
-                <CardDescription>Real-time rankings based on points</CardDescription>
+                <CardDescription>Current session rankings based on points</CardDescription>
               </CardHeader>
               <CardContent>
-                {leaderboard.length === 0 ? (
+                {sessionLeaderboard.length === 0 ? (
                   <p className="text-sm text-gray-500 text-center py-8">No rankings yet</p>
                 ) : (
                   <div className="space-y-2 max-h-[500px] overflow-y-auto">
-                    {leaderboard.slice(0, 20).map((entry, index) => (
+                    {sessionLeaderboard.slice(0, 20).map((entry, index) => (
                       <div
-                        key={entry.userId}
+                        key={`${entry.userId}-${entry.rollNo}-${index}`}
                         className={`p-3 rounded-lg border-2 transition-all ${
                           index === 0
                             ? "bg-yellow-50 border-yellow-300"
@@ -579,6 +605,39 @@ export default function AdminPage() {
                             <p className="text-xs text-gray-500">
                               {entry.score}/{entry.totalQuestions} ({entry.percentage}%)
                             </p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Global Best Leaderboard */}
+            <Card className="bg-white/90 backdrop-blur-sm border-0 shadow-sm">
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Trophy className="h-5 w-5 text-blue-600" />
+                  Global Best Leaderboard (Top 20)
+                </CardTitle>
+                <CardDescription>Each student ka best performance</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {globalLeaderboard.length === 0 ? (
+                  <p className="text-sm text-gray-500 text-center py-8">No rankings yet</p>
+                ) : (
+                  <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                    {globalLeaderboard.slice(0, 20).map((entry, index) => (
+                      <div key={`${entry.userId}-${entry.rollNo}-${index}`} className="p-3 rounded-lg border border-blue-100 bg-blue-50/50">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-medium text-gray-900">#{index + 1} {entry.name}</p>
+                            <p className="text-xs text-gray-500">{entry.rollNo}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-bold text-blue-700">{entry.totalPoints} pts</p>
+                            <p className="text-xs text-gray-500">{entry.score}/{entry.totalQuestions} ({entry.percentage}%)</p>
                           </div>
                         </div>
                       </div>
@@ -656,7 +715,64 @@ export default function AdminPage() {
                   </div>
                 </CardContent>
               </Card>
+
+              <Card className="bg-white/90 backdrop-blur-sm border-0 shadow-sm">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-indigo-100 rounded-lg">
+                      <Users className="h-5 w-5 text-indigo-600" />
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Session Participants</p>
+                      <p className="text-xl font-bold text-gray-900">
+                        {adminData?.statistics.sessionParticipants || 0}
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-white/90 backdrop-blur-sm border-0 shadow-sm">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-orange-100 rounded-lg">
+                      <Clock className="h-5 w-5 text-orange-600" />
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Total Attempts</p>
+                      <p className="text-xl font-bold text-gray-900">
+                        {adminData?.statistics.totalAttempts || 0}
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
             </div>
+
+            {/* Session History */}
+            <Card className="bg-white/90 backdrop-blur-sm border-0 shadow-sm">
+              <CardHeader>
+                <CardTitle className="text-lg">Recent Sessions</CardTitle>
+                <CardDescription>Session-wise participation and progress</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {(adminData?.recentSessions || []).length === 0 ? (
+                  <p className="text-sm text-gray-500">No sessions yet</p>
+                ) : (
+                  <div className="space-y-2 max-h-[250px] overflow-y-auto">
+                    {(adminData?.recentSessions || []).map((session) => (
+                      <div key={session.sessionId} className="p-3 rounded-lg border border-gray-200 bg-gray-50">
+                        <p className="text-xs font-semibold text-gray-800">{session.sessionId}</p>
+                        <p className="text-xs text-gray-600">Questions: {session.totalQuestions} • Participants: {session.participants}</p>
+                        <p className="text-xs text-gray-500">
+                          {new Date(session.startedAt).toLocaleString()} {session.endedAt ? `→ ${new Date(session.endedAt).toLocaleString()}` : "(ongoing)"}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
 
             {/* User Management */}
             <Card className="bg-white/90 backdrop-blur-sm border-0 shadow-sm">
@@ -682,7 +798,7 @@ export default function AdminPage() {
                 <div className="max-h-[400px] overflow-y-auto space-y-2">
                   {filteredUsers.slice(0, 10).map((user) => (
                     <div
-                      key={user._id}
+                      key={user._id || `${user.rollNo}-${user.email}`}
                       className="p-3 rounded-lg border border-gray-200 bg-gray-50"
                     >
                       <div className="flex items-center justify-between mb-2">
@@ -701,11 +817,12 @@ export default function AdminPage() {
                         {user.isEligibleForReward && (
                           <div className="flex items-center space-x-2">
                             <Checkbox
-                              id={`reward-${user._id}`}
+                              id={`reward-${user._id || user.rollNo}`}
                               checked={user.rewardGiven}
-                              onCheckedChange={() => handleRewardToggle(user._id, user.rewardGiven)}
+                              onCheckedChange={() => user._id && handleRewardToggle(user._id, user.rewardGiven)}
+                              disabled={!user._id}
                             />
-                            <Label htmlFor={`reward-${user._id}`} className="text-xs cursor-pointer">
+                            <Label htmlFor={`reward-${user._id || user.rollNo}`} className="text-xs cursor-pointer">
                               {user.rewardGiven ? "Given" : "Pending"}
                             </Label>
                           </div>

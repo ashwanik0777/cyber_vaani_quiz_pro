@@ -38,6 +38,7 @@ interface QuizResults {
   resultId?: string
   error?: string
   leaderboard?: LeaderboardEntry[]
+  globalLeaderboard?: LeaderboardEntry[]
   userRank?: number
   userPoints?: number
 }
@@ -49,6 +50,7 @@ export default function ResultsPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [showAnswers, setShowAnswers] = useState(false)
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([])
+  const [globalLeaderboard, setGlobalLeaderboard] = useState<LeaderboardEntry[]>([])
 
   // WhatsApp group link (replace with your actual group link)
   const WHATSAPP_GROUP_LINK = "https://chat.whatsapp.com/DdmuafKHRoTAYSaLTeBzqP"
@@ -63,6 +65,7 @@ export default function ResultsPage() {
     const parsedResults: QuizResults = JSON.parse(quizData)
     setResults(parsedResults)
     setLeaderboard(parsedResults.leaderboard || [])
+    setGlobalLeaderboard(parsedResults.globalLeaderboard || [])
     setScore(parsedResults.percentage || parsedResults.userPoints || 0)
     setIsLoading(false)
 
@@ -300,15 +303,15 @@ export default function ResultsPage() {
             )}
           </div>
 
-          {/* Right Column - Leaderboard */}
+          {/* Right Column - Leaderboards */}
           <div className="lg:col-span-1">
-            <Card className="shadow-lg border-0 bg-white/90 backdrop-blur-sm sticky top-20">
+            <Card className="shadow-lg border-0 bg-white/90 backdrop-blur-sm sticky top-20 mb-4">
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">
                   <Trophy className="h-5 w-5 text-yellow-500" />
-                  Top 20 Winners
+                  Session Top 20
                 </CardTitle>
-                <CardDescription>Final Leaderboard</CardDescription>
+                <CardDescription>This quiz session leaderboard</CardDescription>
               </CardHeader>
               <CardContent>
                 {leaderboard.length === 0 ? (
@@ -362,6 +365,43 @@ export default function ResultsPage() {
                             <span className="text-sm font-bold text-green-600">
                               {entry.totalPoints} pts
                             </span>
+                          </div>
+                          <div className="text-xs text-gray-500 mt-1">
+                            {entry.score}/{entry.totalQuestions} ({entry.percentage}%)
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-lg border-0 bg-white/90 backdrop-blur-sm sticky top-20">
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Trophy className="h-5 w-5 text-blue-600" />
+                  Global Best Top 20
+                </CardTitle>
+                <CardDescription>Best score of each student</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {globalLeaderboard.length === 0 ? (
+                  <p className="text-sm text-gray-500 text-center py-8">No rankings available</p>
+                ) : (
+                  <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                    {globalLeaderboard.slice(0, 20).map((entry, index) => {
+                      const isCurrentUser =
+                        entry.userId === results.user.userId ||
+                        entry.rollNo === results.user.rollNo
+
+                      return (
+                        <div key={`${entry.userId}-${entry.rollNo}-${index}`} className={`p-3 rounded-lg border ${isCurrentUser ? "bg-blue-50 border-blue-200" : "bg-gray-50 border-gray-200"}`}>
+                          <div className="flex items-center justify-between">
+                            <span className={`text-sm font-medium ${isCurrentUser ? "text-blue-700" : "text-gray-700"}`}>
+                              #{index + 1} {entry.name} {isCurrentUser ? "(You)" : ""}
+                            </span>
+                            <span className="text-sm font-bold text-blue-700">{entry.totalPoints} pts</span>
                           </div>
                           <div className="text-xs text-gray-500 mt-1">
                             {entry.score}/{entry.totalQuestions} ({entry.percentage}%)

@@ -1,6 +1,12 @@
 import { type NextRequest } from "next/server"
 import { getDatabase } from "@/lib/mongodb"
 import type { QuizState } from "@/lib/models"
+import {
+  getDefaultQuizState,
+  getGlobalBestLeaderboard,
+  getSessionLeaderboard,
+  getSessionParticipantsCount,
+} from "@/lib/quiz-session"
 
 export const dynamic = 'force-dynamic'
 
@@ -9,6 +15,47 @@ export async function GET(request: NextRequest) {
   const encoder = new TextEncoder()
   
   const userId = request.nextUrl.searchParams.get("userId")
+
+  const buildPayload = async (state: QuizState) => {
+    const db = await getDatabase()
+    const sessionLeaderboard = await getSessionLeaderboard(db, state.activeSessionId)
+    const globalLeaderboard = await getGlobalBestLeaderboard(db)
+    const sessionParticipants = await getSessionParticipantsCount(db, state.activeSessionId)
+
+    let userData = null
+    if (userId && state.activeSessionId) {
+      const quizResultsCollection = db.collection("quizResults")
+      const userResult = await quizResultsCollection.findOne({ userId, sessionId: state.activeSessionId })
+      if (userResult) {
+        let rank = sessionLeaderboard.findIndex((entry) => entry.userId === userId) + 1
+
+        if (rank === 0) {
+          const higherScores = await quizResultsCollection.countDocuments({
+            sessionId: state.activeSessionId,
+            totalPoints: { $gt: userResult.totalPoints || 0 },
+          })
+          rank = higherScores + 1
+        }
+
+        userData = {
+          userId: userResult.userId,
+          totalPoints: userResult.totalPoints || 0,
+          score: userResult.score || 0,
+          percentage: userResult.percentage || 0,
+          rank,
+        }
+      }
+    }
+
+    return {
+      ...state,
+      participants: sessionParticipants,
+      sessionParticipants,
+      leaderboard: sessionLeaderboard,
+      globalLeaderboard,
+      userData,
+    }
+  }
   
   const stream = new ReadableStream({
     async start(controller) {
@@ -34,24 +81,12 @@ export async function GET(request: NextRequest) {
         let state = await quizStateCollection.findOne({})
         
         if (!state) {
-          const defaultState: QuizState = {
-            isActive: false,
-            currentQuestionIndex: 0,
-            currentQuestionId: null,
-            questionStartTime: null,
-            countdownActive: false,
-            countdownValue: 0,
-            totalQuestions: 10,
-            startedAt: null,
-            endedAt: null,
-            participants: 0,
-            leaderboard: [],
-          }
+          const defaultState = getDefaultQuizState(10)
           const result = await quizStateCollection.insertOne(defaultState)
           state = { ...defaultState, _id: result.insertedId }
         }
 
-        send({ type: "state", data: state })
+        send({ type: "state", data: await buildPayload(state) })
       } catch (error) {
         console.error("Error in SSE:", error)
         send({ type: "error", data: { message: "Connection error" } })
@@ -65,61 +100,13 @@ export async function GET(request: NextRequest) {
         try {
           const db = await getDatabase()
           const quizStateCollection = db.collection<QuizState>("quizState")
-          const quizResultsCollection = db.collection("quizResults")
           
           const state = await quizStateCollection.findOne({})
           
           if (state) {
-            // Get leaderboard
-            const results = await quizResultsCollection
-              .find({})
-              .sort({ totalPoints: -1, score: -1 })
-              .limit(20)
-              .toArray()
-
-            const leaderboard = results.map((result, index) => ({
-              userId: result.userId,
-              name: result.name,
-              rollNo: result.rollNo,
-              totalPoints: result.totalPoints || 0,
-              score: result.score || 0,
-              totalQuestions: result.totalQuestions || 10,
-              percentage: result.percentage || 0,
-              rank: index + 1,
-              lastAnsweredAt: result.updatedAt || result.completedAt || new Date(),
-            }))
-
-            let userData = null
-            if (userId) {
-              const userResult = await quizResultsCollection.findOne({ userId })
-              if (userResult) {
-                // Determine rank if not in top 20
-                let rank = leaderboard.findIndex(entry => entry.userId === userId) + 1
-                if (rank === 0) {
-                   const higherScores = await quizResultsCollection.countDocuments({
-                     totalPoints: { $gt: userResult.totalPoints || 0 }
-                   })
-                   rank = higherScores + 1
-                }
-                
-                userData = {
-                  userId: userResult.userId,
-                  totalPoints: userResult.totalPoints || 0,
-                  score: userResult.score || 0,
-                  percentage: userResult.percentage || 0,
-                  rank
-                }
-              }
-            }
-
             send({
               type: "update",
-              data: {
-                ...state,
-                leaderboard,
-                participants: await quizResultsCollection.countDocuments(),
-                userData,
-              },
+              data: await buildPayload(state),
             })
           }
         } catch (error) {
