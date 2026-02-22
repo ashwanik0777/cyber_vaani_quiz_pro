@@ -25,7 +25,6 @@ export default function HomePage() {
   const [isLoading, setIsLoading] = useState(false)
   const [visitorCount, setVisitorCount] = useState<number | null>(null)
 
-  // Track visitor on page load
   useEffect(() => {
     const trackVisitor = async () => {
       try {
@@ -41,7 +40,6 @@ export default function HomePage() {
       }
     }
 
-    // Load visitor count
     const loadVisitorCount = async () => {
       try {
         const response = await fetch("/api/visitors")
