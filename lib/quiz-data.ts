@@ -9,246 +9,224 @@ export interface QuizQuestion {
 
 export const quizQuestions: QuizQuestion[] = 
 [
+  
     {
       "id": 1,
-      "question": "What does HTML stand for?",
+      "question": "Which Tailwind class applies padding only on the vertical axis?",
       "options": [
-        "Hyper Text Markup Language",
-        "High Tech Modern Language",
-        "Hyperlink and Text Mark Language",
-        "Home Tool Markup Language"
+        "px-4",
+        "py-4",
+        "p-4",
+        "pl-4"
       ],
-      "correctAnswer": 0,
-      "category": "html"
+      "correctAnswer": 1,
+      "category": "tailwind"
     },
     {
       "id": 2,
-      "question": "Which HTML tag is used to define a paragraph?",
+      "question": "Which class sets display to flex?",
       "options": [
-        "<para>",
-        "<p>",
-        "<paragraph>",
-        "<text>"
+        "flex",
+        "flexbox",
+        "display-flex",
+        "d-flex"
       ],
-      "correctAnswer": 1,
-      "category": "html"
+      "correctAnswer": 0,
+      "category": "tailwind"
     },
     {
       "id": 3,
-      "question": "Which HTML tag is used to create a table row?",
+      "question": "Which class aligns items horizontally in the center inside a flex container?",
       "options": [
-        "<td>",
-        "<th>",
-        "<tr>",
-        "<table-row>"
+        "items-center",
+        "content-center",
+        "justify-center",
+        "align-center"
       ],
       "correctAnswer": 2,
-      "category": "html"
+      "category": "tailwind"
     },
     {
       "id": 4,
-      "question": "Which attribute is used to open a link in a new tab?",
+      "question": "Which Tailwind class hides an element completely?",
       "options": [
-        "new",
-        "blank",
-        "target=\"_blank\"",
-        "open"
+        "invisible",
+        "opacity-0",
+        "hidden",
+        "display-none"
       ],
       "correctAnswer": 2,
-      "category": "html"
+      "category": "tailwind"
     },
     {
       "id": 5,
-      "question": "Which input type is used for email in HTML?",
+      "question": "Which class makes text uppercase?",
       "options": [
-        "text",
-        "mail",
-        "email",
-        "input-email"
+        "uppercase",
+        "text-upper",
+        "font-uppercase",
+        "caps"
       ],
-      "correctAnswer": 2,
-      "category": "html"
+      "correctAnswer": 0,
+      "category": "tailwind"
     },
     {
       "id": 6,
-      "question": "Which CSS property is used to change background color?",
+      "question": "Which class sets width to 100%?",
       "options": [
-        "color",
-        "background-color",
-        "bg-color",
-        "background-style"
+        "w-screen",
+        "w-100",
+        "w-full",
+        "full-width"
       ],
-      "correctAnswer": 1,
-      "category": "css"
+      "correctAnswer": 2,
+      "category": "tailwind"
     },
     {
       "id": 7,
-      "question": "Which CSS property is used to create rounded corners?",
+      "question": "Which class adds large shadow to an element?",
       "options": [
-        "corner-radius",
-        "border-style",
-        "border-radius",
-        "round-edge"
+        "shadow",
+        "shadow-lg",
+        "shadow-xl",
+        "box-shadow-xl"
       ],
       "correctAnswer": 2,
-      "category": "css"
+      "category": "tailwind"
     },
     {
       "id": 8,
-      "question": "Which CSS property is used to control the space outside an element?",
+      "question": "Which responsive prefix applies styles for large screens?",
       "options": [
-        "padding",
-        "margin",
-        "spacing",
-        "border"
-      ],
-      "correctAnswer": 1,
-      "category": "css"
-    },
-    {
-      "id": 9,
-      "question": "Which display value makes an element behave like a block element?",
-      "options": [
-        "inline",
-        "block",
-        "flex",
-        "grid"
-      ],
-      "correctAnswer": 1,
-      "category": "css"
-    },
-    {
-      "id": 10,
-      "question": "Which CSS property is used to align text to the center?",
-      "options": [
-        "align",
-        "text-align",
-        "font-align",
-        "center-text"
-      ],
-      "correctAnswer": 1,
-      "category": "css"
-    },
-    {
-      "id": 11,
-      "question": "Tailwind CSS is primarily used for?",
-      "options": [
-        "Database management",
-        "Backend development",
-        "Styling UI using utility classes",
-        "Server configuration"
+        "md:",
+        "sm:",
+        "lg:",
+        "xl:"
       ],
       "correctAnswer": 2,
       "category": "tailwind"
     },
     {
-      "id": 12,
-      "question": "Which Tailwind class is used to apply margin?",
+      "id": 9,
+      "question": "Which class creates a grid layout?",
       "options": [
-        "p-4",
-        "m-4",
-        "margin-4",
-        "space-4"
-      ],
-      "correctAnswer": 1,
-      "category": "tailwind"
-    },
-    {
-      "id": 13,
-      "question": "Which Tailwind class is used to make text bold?",
-      "options": [
-        "font-bold",
-        "text-bold",
-        "bold-text",
-        "fw-bold"
-      ],
-      "correctAnswer": 0,
-      "category": "tailwind"
-    },
-    {
-      "id": 14,
-      "question": "Which Tailwind class is used to set width to full?",
-      "options": [
-        "w-full",
-        "width-100",
-        "full-width",
-        "w-100"
-      ],
-      "correctAnswer": 0,
-      "category": "tailwind"
-    },
-    {
-      "id": 15,
-      "question": "Which Tailwind class is used to create a grid layout?",
-      "options": [
-        "flex",
         "grid",
-        "layout-grid",
-        "display-grid"
+        "grid-layout",
+        "display-grid",
+        "layout-grid"
       ],
-      "correctAnswer": 1,
+      "correctAnswer": 0,
       "category": "tailwind"
     },
     {
-      "id": 16,
-      "question": "Which Tailwind class centers items horizontally in flex?",
+      "id": 10,
+      "question": "Which class creates 4 equal columns in grid?",
       "options": [
-        "items-center",
-        "justify-center",
-        "text-center",
-        "center-flex"
-      ],
-      "correctAnswer": 1,
-      "category": "tailwind"
-    },
-    {
-      "id": 17,
-      "question": "Which HTML tag is used to create a form?",
-      "options": [
-        "<form>",
-        "<input>",
-        "<fieldset>",
-        "<label>"
-      ],
-      "correctAnswer": 0,
-      "category": "html"
-    },
-    {
-      "id": 18,
-      "question": "Which CSS property is used to change font style to italic?",
-      "options": [
-        "font-style",
-        "font-weight",
-        "text-style",
-        "italic-text"
-      ],
-      "correctAnswer": 0,
-      "category": "css"
-    },
-    {
-      "id": 19,
-      "question": "Which Tailwind class is used to add shadow to an element?",
-      "options": [
-        "shadow",
-        "box-shadow",
-        "shadow-lg",
-        "Both shadow and shadow-lg"
+        "grid-cols-3",
+        "grid-4",
+        "col-4",
+        "grid-cols-4"
       ],
       "correctAnswer": 3,
       "category": "tailwind"
     },
     {
-      "id": 20,
-      "question": "Which HTML tag is used for the largest heading?",
+      "id": 11,
+      "question": "Which class makes an element position relative?",
       "options": [
-        "<h6>",
-        "<head>",
-        "<h1>",
-        "<heading>"
+        "relative",
+        "position-relative",
+        "rel",
+        "pos-relative"
+      ],
+      "correctAnswer": 0,
+      "category": "tailwind"
+    },
+    {
+      "id": 12,
+      "question": "Which class applies margin on left side only?",
+      "options": [
+        "ml-4",
+        "mx-4",
+        "m-4",
+        "mt-4"
+      ],
+      "correctAnswer": 0,
+      "category": "tailwind"
+    },
+    {
+      "id": 13,
+      "question": "Which class is used to apply transition effect?",
+      "options": [
+        "animate",
+        "transform",
+        "transition",
+        "effect"
       ],
       "correctAnswer": 2,
-      "category": "html"
+      "category": "tailwind"
+    },
+    {
+      "id": 14,
+      "question": "Which class changes background color on hover?",
+      "options": [
+        "bg-hover-blue-500",
+        "hover:bg-blue-500",
+        "hover-blue-500",
+        "bg-blue-500-hover"
+      ],
+      "correctAnswer": 1,
+      "category": "tailwind"
+    },
+    {
+      "id": 15,
+      "question": "Which class makes text color red?",
+      "options": [
+        "font-red-500",
+        "color-red-500",
+        "text-red",
+        "text-red-500"
+      ],
+      "correctAnswer": 3,
+      "category": "tailwind"
+    },
+    {
+      "id": 16,
+      "question": "Which class makes flex direction column?",
+      "options": [
+        "flex-col",
+        "flex-column",
+        "column-flex",
+        "direction-col"
+      ],
+      "correctAnswer": 0,
+      "category": "tailwind"
+    },
+    {
+      "id": 17,
+      "question": "Which class controls overflow behavior?",
+      "options": [
+        "overflow-control",
+        "overflow-hidden",
+        "hidden-overflow",
+        "scroll-hidden"
+      ],
+      "correctAnswer": 1,
+      "category": "tailwind"
+    },
+    {
+      "id": 18,
+      "question": "Which class sets height to full screen?",
+      "options": [
+        "h-full",
+        "h-100",
+        "screen-h",
+        "h-screen"
+      ],
+      "correctAnswer": 3,
+      "category": "tailwind"
     }
+  
   
 
 
